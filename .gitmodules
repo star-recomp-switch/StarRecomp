@@ -1,0 +1,3 @@
+[submodule "vendor/switchrecomp"]
+	path = vendor/switchrecomp
+	url = https://github.com/kaiyao7/SwitchRecomp

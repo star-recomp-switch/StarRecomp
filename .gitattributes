@@ -1,0 +1,6 @@
+*.cmp filter=lfs diff=lfs merge=lfs -text
+*.cmpbin filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+*.opus filter=lfs diff=lfs merge=lfs -text
+output/main/main.c filter=lfs diff=lfs merge=lfs -text
+output/sdk/sdk.c filter=lfs diff=lfs merge=lfs -text
