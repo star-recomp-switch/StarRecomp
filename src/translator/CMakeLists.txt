@@ -15,6 +15,7 @@ target_include_directories(kirbyrecomp_translator PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/decoder
     ${CMAKE_SOURCE_DIR}/include
     ${SR_INCLUDE_DIR}
+    /c/msys64/ucrt64/include
 )
 
 target_link_libraries(kirbyrecomp_translator PUBLIC

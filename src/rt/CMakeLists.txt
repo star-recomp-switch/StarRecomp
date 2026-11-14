@@ -9,6 +9,7 @@ target_sources(kirbyrecomp_rt PRIVATE
     runtime.cpp
     memory.cpp
     threading.cpp
+    svc_thread.cpp
 )
 
 target_include_directories(kirbyrecomp_rt PUBLIC

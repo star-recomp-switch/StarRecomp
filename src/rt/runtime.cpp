@@ -1,4 +1,5 @@
 #include "kirbyrecomp/runtime.h"
+#include "svc_thread.cpp"  // Include the thread SVC implementation
 
 #include <cstring>
 
@@ -47,6 +48,11 @@ void sr_rt_call(SrCpuState* cpu, u64 target) {
 
 void sr_rt_handle_svc(SrCpuState* cpu, u32 svc_id) {
     // Handle supervisor calls
+    // First try thread SVCs
+    if (sr_rt_dispatch_thread_svc(cpu, svc_id)) {
+        return;
+    }
+
     // SVC #0: exit/return from guest code
     // Other SVCs: system calls
     (void)cpu;
@@ -90,6 +96,11 @@ u64 sr_cpu_execute(SrCpuState* cpu, SrMemory* mem, u64 entry_point) {
     // For now, return 0
     (void)mem;
     return 0;
+}
+
+// Dispatch thread-related SVCs
+bool sr_rt_dispatch_thread_svc(SrCpuState* cpu, u32 svc_id) {
+    return kr::dispatch_thread_svc(cpu, svc_id);
 }
 
 } // namespace kr

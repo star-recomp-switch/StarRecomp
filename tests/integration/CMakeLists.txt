@@ -49,7 +49,17 @@ endif()
 target_include_directories(kirbyrecomp_nso_integration_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 include(GoogleTest)
-gtest_discover_tests(kirbyrecomp_nso_integration_tests)
+# Don't run gtest_discover_tests at configure time (needs PATH for DLLs)
+# Instead, add the test executable directly to CTest
+add_test(
+    NAME kirbyrecomp_nso_integration_all
+    COMMAND $<TARGET_FILE:kirbyrecomp_nso_integration_tests>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(kirbyrecomp_nso_integration_all PROPERTIES
+    TIMEOUT 120
+    LABELS "nso;integration"
+)
 
 # Test target: HLE Services integration tests
 add_executable(kirbyrecomp_hle_tests
@@ -63,7 +73,9 @@ target_include_directories(kirbyrecomp_hle_tests PRIVATE
 
 target_link_libraries(kirbyrecomp_hle_tests PRIVATE
     kirbyrecomp_hle
+    kirbyrecomp_rt
     sr_common
+    Vulkan::Vulkan
     GTest::gtest_main
 )
 
@@ -84,10 +96,7 @@ endif()
 # Let tests reach internal headers
 target_include_directories(kirbyrecomp_hle_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-include(GoogleTest)
-gtest_discover_tests(kirbyrecomp_hle_tests)
-
-# Add to CTest
+# Add to CTest - HLE tests
 add_test(
     NAME kirbyrecomp_hle_all
     COMMAND $<TARGET_FILE:kirbyrecomp_hle_tests>
@@ -96,15 +105,4 @@ add_test(
 set_tests_properties(kirbyrecomp_hle_all PROPERTIES
     TIMEOUT 120
     LABELS "hle;integration"
-)
-
-# Add to CTest
-add_test(
-    NAME kirbyrecomp_nso_integration_all
-    COMMAND $<TARGET_FILE:kirbyrecomp_nso_integration_tests>
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-set_tests_properties(kirbyrecomp_nso_integration_all PROPERTIES
-    TIMEOUT 120
-    LABELS "nso;integration"
 )

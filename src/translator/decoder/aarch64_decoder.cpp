@@ -109,7 +109,7 @@ std::vector<ir::IrInstruction> AArch64Decoder::decode_basic_block(
             decoded.opcode == ir::IrOpcode::Bl ||
             decoded.opcode == ir::IrOpcode::Br ||
             decoded.opcode == ir::IrOpcode::Blr ||
-            decoded.opcode == ir::IrOpcode::Ret) {  // If we add Ret later
+            decoded.opcode == ir::IrOpcode::Return) {
             break;
         }
 
@@ -124,11 +124,11 @@ std::string AArch64Decoder::get_last_error() const {
     return capstone_.get_last_error_message();
 }
 
-std::optional<ir::IrOpcode> AArch64Decoder::map_opcode(cs_insn_id capstone_id) const {
+std::optional<ir::IrOpcode> AArch64Decoder::map_opcode(unsigned int capstone_id) const {
     using namespace kirbyrecomp::translator;
     // Map Capstone ARM64 instruction IDs to our IR opcodes
-    // Reference: Capstone's arm64.h ARM64_INS_* enum
-    switch (static_cast<unsigned int>(capstone_id)) {
+    // Reference: Capstone's arm64.h arm64_insn enum (Capstone 5.x)
+    switch (capstone_id) {
         // Integer ALU
         case ARM64_INS_ADD:  return ir::IrOpcode::Add;
         case ARM64_INS_SUB:  return ir::IrOpcode::Sub;
@@ -184,33 +184,40 @@ std::optional<ir::IrOpcode> AArch64Decoder::map_opcode(cs_insn_id capstone_id) c
 }
 
 std::optional<uint8_t> AArch64Decoder::reg_to_index(Arm64Register reg, bool& is_64bit) const {
-    // Map Capstone ARM64 register enum to register index (0-31)
-    // X0-X30, SP are indices 0-31
-    // W0-W30, WSP are 32-bit views of same registers
+    // Map Capstone 5.x ARM64 register enum to register index (0-31)
+    // Capstone 5.x values: X0=218, X1=219... X28=246, W0=187... W30=217, SP=5, WSP=7, XZR=9, WZR=8
     unsigned int r = static_cast<unsigned int>(reg);
 
-    // 64-bit registers: X0-X30, SP
-    if (r >= ARM64_REG_X0 && r <= ARM64_REG_X30) {
+    // 64-bit registers: X0-X28 (Capstone 5.x: 218-246)
+    if (r >= ARM64_REG_X0 && r <= ARM64_REG_X28) {
         is_64bit = true;
         return static_cast<uint8_t>(r - ARM64_REG_X0);
     }
-    if (r == ARM64_REG_SP) {
+    // X29 = FP (2), X30 = LR (3) - aliases
+    if (r == ARM64_REG_FP) {  // X29
+        is_64bit = true;
+        return 29;
+    }
+    if (r == ARM64_REG_LR) {  // X30
+        is_64bit = true;
+        return 30;
+    }
+    if (r == ARM64_REG_SP) {  // SP = 5
         is_64bit = true;
         return 31;  // SP is index 31
     }
 
-    // 32-bit registers: W0-W30, WSP
+    // 32-bit registers: W0-W30 (Capstone 5.x: 187-217)
     if (r >= ARM64_REG_W0 && r <= ARM64_REG_W30) {
         is_64bit = false;
         return static_cast<uint8_t>(r - ARM64_REG_W0);
     }
-    if (r == ARM64_REG_WSP) {
+    if (r == ARM64_REG_WSP) {  // WSP = 7
         is_64bit = false;
         return 31;  // WSP is index 31
     }
 
-    // XZR/WZR are encoded as register 31 in ARM64 but we treat them specially
-    // In AArch64, XZR is X31, WZR is W31
+    // XZR/WZR (Capstone 5.x: XZR=9, WZR=8)
     if (r == ARM64_REG_XZR || r == ARM64_REG_WZR) {
         is_64bit = (r == ARM64_REG_XZR);
         return 31;  // ZR uses index 31

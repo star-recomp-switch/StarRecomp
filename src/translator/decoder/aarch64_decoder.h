@@ -17,11 +17,11 @@ public:
     AArch64Decoder();
     ~AArch64Decoder() = default;
 
-    // Non-copyable, movable
+    // Non-copyable, non-movable (CapstoneWrapper is non-movable)
     AArch64Decoder(const AArch64Decoder&) = delete;
     AArch64Decoder& operator=(const AArch64Decoder&) = delete;
-    AArch64Decoder(AArch64Decoder&&) = default;
-    AArch64Decoder& operator=(AArch64Decoder&&) = default;
+    AArch64Decoder(AArch64Decoder&&) = delete;
+    AArch64Decoder& operator=(AArch64Decoder&&) = delete;
 
     // Decode a single instruction from bytes at the given address
     // Returns nullopt on failure
@@ -45,8 +45,8 @@ public:
 private:
     CapstoneWrapper capstone_;
 
-    // Map Capstone ARM64 instruction ID to IR opcode
-    std::optional<ir::IrOpcode> map_opcode(cs_insn_id capstone_id) const;
+    // Map Capstone ARM64 instruction ID to IR opcode (Capstone 5.x uses unsigned int/arm64_insn enum)
+    std::optional<ir::IrOpcode> map_opcode(unsigned int capstone_id) const;
 
     // Convert Capstone ARM64 register to IR register index
     std::optional<uint8_t> reg_to_index(Arm64Register reg, bool& is_64bit) const;

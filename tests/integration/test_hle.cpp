@@ -2,9 +2,13 @@
 
 #include <gtest/gtest.h>
 #include <kirbyrecomp/hle/service.h>
+#include <kirbyrecomp/runtime.h>
 #include <memory>
+#include <thread>
+#include <chrono>
 
 using namespace kr::hle;
+using namespace kr;
 
 TEST(HleServiceManager, CreateAndGetServices) {
     ServiceManager& sm = ServiceManager::instance();
@@ -167,4 +171,148 @@ TEST(HleFileSystem, OpenDirectory) {
     Result result = fs->dispatch(nullptr, 5, path, strlen(path) + 1, &handle, sizeof(handle));
     EXPECT_EQ(result, Result::Success);
     EXPECT_NE(handle, 0);
+}
+
+// ============================================================================
+// Threading SVC Tests
+// ============================================================================
+
+TEST(HleThreading, CreateThreadAndWait) {
+    // Test CreateThread (SVC 0x0A) and WaitSynchronization (SVC 0x0B)
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    // Set up CreateThread arguments
+    // x0 = entry point (we'll use a dummy function)
+    // x1 = arg
+    // x2 = stack base
+    // x3 = stack size
+    // x4 = priority
+    // x5 = core id
+    cpu.x[0] = 0x1000; // dummy entry point
+    cpu.x[1] = 0x1234; // arg
+    cpu.x[2] = 0x100000; // stack base
+    cpu.x[3] = 0x10000; // stack size (64KB)
+    cpu.x[4] = 0; // priority
+    cpu.x[5] = -1; // core id (any)
+
+    // Call CreateThread via dispatch
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x0A);
+    EXPECT_TRUE(handled);
+
+    // Check that we got a thread handle back
+    uint64_t thread_handle = cpu.x[0];
+    EXPECT_NE(thread_handle, 0ull);
+    EXPECT_EQ(cpu.x[1], 0ull); // Success
+
+    // Call WaitSynchronization on the thread
+    cpu.x[0] = thread_handle;
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x0B);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull); // Success
+}
+
+TEST(HleThreading, StartThread) {
+    // Test StartThread (SVC 0x22)
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    // Create a thread first
+    cpu.x[0] = 0x1000;
+    cpu.x[1] = 0x1234;
+    cpu.x[2] = 0x100000;
+    cpu.x[3] = 0x10000;
+    cpu.x[4] = 0;
+    cpu.x[5] = -1;
+
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x0A);
+    EXPECT_TRUE(handled);
+    uint64_t thread_handle = cpu.x[0];
+
+    // Call StartThread
+    cpu.x[0] = thread_handle;
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x22);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull); // Success
+}
+
+TEST(HleThreading, SleepThread) {
+    // Test SleepThread (SVC 0x24)
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    // Sleep for a short duration
+    cpu.x[0] = 1000000; // 1ms in nanoseconds
+
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x24);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull); // Success
+}
+
+TEST(HleThreading, GetResult) {
+    // Test GetResult (SVC 0x0C)
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x0C);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull); // Returns 0 in simplified impl
+}
+
+TEST(HleThreading, EventSynchronization) {
+    // Test CreateEvent, SignalEvent, WaitEvent
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    // Create event
+    cpu.x[1] = 0; // initial state = non-signaled
+    cpu.x[2] = 1; // auto-reset
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x42);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull);
+    uint64_t event_id = cpu.x[1];
+    EXPECT_NE(event_id, 0ull);
+
+    // Signal event
+    cpu.x[0] = event_id;
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x40);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull);
+
+    // Wait for event
+    cpu.x[0] = event_id;
+    cpu.x[1] = 1000000000; // 1 second timeout
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x41);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull);
+}
+
+TEST(HleThreading, CloseHandle) {
+    // Test CloseHandle
+    SrCpuState cpu;
+    sr_cpu_init(&cpu);
+
+    // Create a thread
+    cpu.x[0] = 0x1000;
+    cpu.x[1] = 0x1234;
+    cpu.x[2] = 0x100000;
+    cpu.x[3] = 0x10000;
+    cpu.x[4] = 0;
+    cpu.x[5] = -1;
+
+    bool handled = sr_rt_dispatch_thread_svc(&cpu, 0x0A);
+    EXPECT_TRUE(handled);
+    uint64_t thread_handle = cpu.x[0];
+
+    // Close the handle
+    cpu.x[0] = thread_handle;
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x43);
+    EXPECT_TRUE(handled);
+    EXPECT_EQ(cpu.x[0], 0ull); // Success
+
+    // Try to close again - should fail
+    cpu.x[0] = thread_handle;
+    handled = sr_rt_dispatch_thread_svc(&cpu, 0x43);
+    EXPECT_TRUE(handled);
+    EXPECT_NE(cpu.x[0], 0ull); // Not found
 }

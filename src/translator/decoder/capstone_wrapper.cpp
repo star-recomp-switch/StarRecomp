@@ -85,9 +85,9 @@ std::optional<InstructionDetail> CapstoneWrapper::decode_instruction(
     const cs_insn& decoded = insn[0];
 
     InstructionDetail detail;
-    detail.id = static_cast<cs_insn_id>(decoded.id);
-    detail.mnemonic = decoded.mnemonic ? decoded.mnemonic : "";
-    detail.op_str = decoded.op_str ? decoded.op_str : "";
+    detail.id = decoded.id;  // arm64_insn enum in Capstone 5.x
+    detail.mnemonic = (decoded.mnemonic[0] != '\0') ? decoded.mnemonic : "";
+    detail.op_str = (decoded.op_str[0] != '\0') ? decoded.op_str : "";
     detail.size = static_cast<uint16_t>(decoded.size);
     detail.address = decoded.address;
 
@@ -101,7 +101,7 @@ std::optional<InstructionDetail> CapstoneWrapper::decode_instruction(
         detail.cc = arm64.cc;
         detail.update_flags = arm64.update_flags;
         detail.writeback = arm64.writeback;
-        detail.insn_id = arm64.insn_id;
+        // Note: insn_id was removed in Capstone 5.x
 
         // Parse operands
         detail.operands.reserve(arm64.op_count);
@@ -121,7 +121,7 @@ std::optional<InstructionDetail> CapstoneWrapper::decode_instruction(
             parsed_op.mem.disp = op.mem.disp;
             parsed_op.fp = op.fp;
             parsed_op.sys = static_cast<Arm64SysReg>(op.sys);
-            parsed_op.reg_sub = static_cast<Arm64Register>(op.reg_sub);
+            // Note: reg_sub was removed in Capstone 5.x
 
             detail.operands.push_back(parsed_op);
         }

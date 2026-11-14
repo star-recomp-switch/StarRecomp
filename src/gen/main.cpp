@@ -1,21 +1,44 @@
 // KirbyRecomp Generator Tool - Main Entry Point
 // Parses user game files (ExeFS/RomFS + prod.keys) and generates native C code
+// Avoids std::filesystem due to mingw64 linking issues
 
+#include "generator.h"
 #include <iostream>
 #include <string>
-#include <filesystem>
-#include <vector>
-#include <memory>
+#include <cstdio>
+#include <cstring>
 
-namespace fs = std::filesystem;
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
 
-struct GeneratorOptions {
-    fs::path exefs_path;
-    fs::path romfs_path;
-    fs::path keys_path;
-    fs::path output_dir;
-    bool verbose = false;
-};
+namespace gen = kirbyrecomp::gen;
+
+// Simple file existence check using C stdio
+static bool file_exists(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (f) {
+        fclose(f);
+        return true;
+    }
+    // Also check if it's a directory
+    #ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(path, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        FindClose(h);
+        return true;
+    }
+    #else
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        return true;
+    }
+    #endif
+    return false;
+}
 
 int PrintUsage(const char* argv0) {
     std::cerr << "Usage: " << argv0 << " [options]\n"
@@ -29,8 +52,7 @@ int PrintUsage(const char* argv0) {
     return 1;
 }
 
-GeneratorOptions ParseArgs(int argc, char* argv[]) {
-    GeneratorOptions opts;
+bool ParseArgs(int argc, char* argv[], gen::GeneratorOptions& opts) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--exefs" && i + 1 < argc) {
@@ -44,16 +66,18 @@ GeneratorOptions ParseArgs(int argc, char* argv[]) {
         } else if (arg == "-v" || arg == "--verbose") {
             opts.verbose = true;
         } else if (arg == "-h" || arg == "--help") {
-            return PrintUsage(argv[0]);
+            PrintUsage(argv[0]);
+            return false;
         } else {
             std::cerr << "Unknown argument: " << arg << "\n";
-            return PrintUsage(argv[0]);
+            PrintUsage(argv[0]);
+            return false;
         }
     }
-    return opts;
+    return true;
 }
 
-bool ValidateInputs(const GeneratorOptions& opts) {
+bool ValidateInputs(const gen::GeneratorOptions& opts) {
     if (opts.exefs_path.empty()) {
         std::cerr << "Error: --exefs is required\n";
         return false;
@@ -71,15 +95,15 @@ bool ValidateInputs(const GeneratorOptions& opts) {
         return false;
     }
 
-    if (!fs::exists(opts.exefs_path)) {
+    if (!file_exists(opts.exefs_path.c_str())) {
         std::cerr << "Error: ExeFS path does not exist: " << opts.exefs_path << "\n";
         return false;
     }
-    if (!fs::exists(opts.romfs_path)) {
+    if (!file_exists(opts.romfs_path.c_str())) {
         std::cerr << "Error: RomFS path does not exist: " << opts.romfs_path << "\n";
         return false;
     }
-    if (!fs::exists(opts.keys_path)) {
+    if (!file_exists(opts.keys_path.c_str())) {
         std::cerr << "Error: prod.keys path does not exist: " << opts.keys_path << "\n";
         return false;
     }
@@ -91,7 +115,10 @@ int main(int argc, char* argv[]) {
     std::cout << "KirbyRecomp Generator v0.1.0\n";
     std::cout << "Static recompilation pipeline for Kirby and the Forgotten Land\n\n";
 
-    auto opts = ParseArgs(argc, argv);
+    gen::GeneratorOptions opts;
+    if (!ParseArgs(argc, argv, opts)) {
+        return 1;
+    }
 
     if (!ValidateInputs(opts)) {
         return 1;
@@ -104,17 +131,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Out:   " << opts.output_dir << "\n\n";
     }
 
-    // TODO: Implement actual generation pipeline
-    // 1. Validate prod.keys
-    // 2. Extract NSO modules from ExeFS
-    // 3. Parse NSO headers and sections
-    // 4. Disassemble AArch64 code to IR
-    // 5. Generate C code from IR
-    // 6. Translate shaders (Maxwell bytecode -> SPIR-V)
-    // 7. Write output files
+    gen::Generator generator(opts);
+    bool success = generator.Run();
 
-    std::cout << "[INFO] Generator pipeline not yet implemented\n";
-    std::cout << "[INFO] This is Milestone 1 - foundation work in progress\n";
-
-    return 0;
+    return success ? 0 : 1;
 }

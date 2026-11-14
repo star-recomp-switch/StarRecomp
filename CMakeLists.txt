@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 project(KirbyRecomp VERSION 0.1.0 LANGUAGES CXX C)
 
+# Enable testing at the top level so CTest discovers tests in subdirectories
+enable_testing()
+
 # Prefer Ninja generator if available
 if(CMAKE_GENERATOR STREQUAL "Unix Makefiles" OR CMAKE_GENERATOR STREQUAL "NMake Makefiles" OR CMAKE_GENERATOR STREQUAL "NMake Makefiles JOM")
   message(STATUS "Consider using Ninja generator: cmake -G Ninja ...")
@@ -100,11 +103,12 @@ file(MAKE_DIRECTORY ${KIRBYRECOMP_GENERATED_DIR})
 # Include all tests (includes integration subdirectory)
 add_subdirectory(tests)
 
-# Note: Translator library disabled due to Capstone version compatibility issues
-# add_subdirectory(src/translator)
+# Translator library for AArch64 -> IR decoding
+add_subdirectory(src/translator)
 
-# Note: Generator tool and tests will be enabled once mingw64 C++ stdlib include paths are fixed
-# add_subdirectory(src/gen)
+# Generator tool for NSO -> C translation
+add_subdirectory(src/gen)
+# Note: Golden tests will be enabled once mingw64 C++ stdlib include paths are fixed
 # add_subdirectory(tests/golden)
 
 # Note: kirbyrecomp_game target will be added when src/game is implemented

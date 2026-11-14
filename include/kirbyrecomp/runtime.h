@@ -87,4 +87,13 @@ void sr_cpu_reset(SrCpuState* cpu);
 // Returns the return value in X0
 u64 sr_cpu_execute(SrCpuState* cpu, SrMemory* mem, u64 entry_point);
 
+// Thread SVC handling
+// Dispatch a thread-related SVC (CreateThread, WaitSynchronization, etc.)
+// Returns true if the SVC was handled, false otherwise
+bool sr_rt_dispatch_thread_svc(SrCpuState* cpu, u32 svc_id);
+
+// Thread-local storage for CPU state
+void sr_thread_set_cpu_state(SrCpuState* cpu);
+SrCpuState* sr_thread_get_cpu_state();
+
 } // namespace kr

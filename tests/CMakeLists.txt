@@ -59,7 +59,14 @@ endif()
 target_include_directories(kirbyrecomp_nso_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 include(GoogleTest)
-gtest_discover_tests(kirbyrecomp_nso_tests)
+# Don't use gtest_discover_tests at configure time (needs PATH for DLLs)
+# Instead add the test executable directly to CTest
+add_test(
+    NAME kirbyrecomp_nso_unit
+    COMMAND $<TARGET_FILE:kirbyrecomp_nso_tests>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(kirbyrecomp_nso_unit PROPERTIES TIMEOUT 120 LABELS "nso;integration")
 
 
 # -----------------------------------------------------------------------------
@@ -131,3 +138,6 @@ set_tests_properties(kirbyrecomp_nso_all PROPERTIES TIMEOUT 120 LABELS "nso;inte
 
 # Include integration tests subdirectory
 add_subdirectory(integration)
+
+# The HLE tests are defined in integration/CMakeLists.txt and discovered there
+# CTest will automatically pick them up via gtest_discover_tests

@@ -4,6 +4,12 @@
 #include "generator.h"
 #include <fstream>
 #include <iostream>
+#include <cstdio>
+#include <cstring>
+
+#include "kirbyrecomp/nso/nso.h"
+#include "switchrecomp/translator/translator.h"
+#include "switchrecomp/codegen/codegen.h"
 
 namespace kirbyrecomp::gen {
 
@@ -60,19 +66,20 @@ bool Generator::ParseKeys() {
 bool Generator::ExtractNsoModules() {
     std::cout << "[Generator] Extracting NSO modules from ExeFS\n";
 
-    // Look for main NSO and other modules
-    for (const auto& entry : std::filesystem::directory_iterator(options_.exefs_path)) {
-        if (entry.is_regular_file()) {
-            std::string filename = entry.path().filename().string();
-            // NSO modules typically don't have extensions, or have .nso
-            if (filename == "main" || filename == "rtld" || filename == "sdk" || filename == "subsdk0") {
-                NsoModule module;
-                module.name = filename;
-                module.path = entry.path();
-                module.is_main = (filename == "main");
-                modules_.push_back(std::move(module));
-                std::cout << "[Generator] Found NSO module: " << filename << "\n";
-            }
+    // Look for main NSO and other modules using C-style directory iteration
+    // Check for known module names
+    const char* known_modules[] = {"main", "rtld", "sdk", "subsdk0", nullptr};
+    for (int i = 0; known_modules[i]; ++i) {
+        std::string full_path = options_.exefs_path + "/" + known_modules[i];
+        FILE* f = fopen(full_path.c_str(), "rb");
+        if (f) {
+            fclose(f);
+            NsoModule module;
+            module.name = known_modules[i];
+            module.path = full_path;
+            module.is_main = (std::string(known_modules[i]) == "main");
+            modules_.push_back(std::move(module));
+            std::cout << "[Generator] Found NSO module: " << known_modules[i] << "\n";
         }
     }
 
@@ -86,14 +93,72 @@ bool Generator::ExtractNsoModules() {
 
 bool Generator::ProcessModule(const NsoModule& module) {
     std::cout << "[Generator] Processing module: " << module.name << "\n";
-    // TODO: Implement NSO parsing and AArch64 -> IR translation
-    // This would:
-    // 1. Parse NSO header
-    // 2. Decompress sections (LZ4 if needed)
-    // 3. Apply relocations
-    // 4. Disassemble .text section using Capstone
-    // 5. Build IR functions
-    // 6. Generate C code via codegen library
+
+    // Parse NSO file
+    kirbyrecomp::nso::NsoParser parser;
+    auto nso_result = parser.parse_file(module.path.c_str());
+    if (!nso_result.has_value()) {
+        std::cerr << "[Generator] Failed to parse NSO: " << parser.get_last_error() << "\n";
+        return false;
+    }
+
+    const auto& nso = nso_result.value();
+    const auto* text_section = nso.get_section(kirbyrecomp::nso::SectionType::Text);
+    if (!text_section || text_section->data.empty()) {
+        std::cerr << "[Generator] No .text section found in NSO module\n";
+        return false;
+    }
+
+    std::cout << "[Generator] Found .text section: " << text_section->data.size() << " bytes\n";
+
+    // Translate AArch64 code to IR using SwitchRecomp translator
+    sr::translator::TranslateOptions translate_opts;
+    translate_opts.base_address = kirbyrecomp::nso::DEFAULT_NSO_BASE_ADDRESS + text_section->virtual_offset;
+    translate_opts.strict_decode = false;  // Emit Undefined for unimplemented opcodes
+
+    // Use the SwitchRecomp translator (the one in vendor/switchrecomp)
+    auto ir_module = sr::translator::Translate(
+        sr::common::span<const uint8_t>(text_section->data.data(), text_section->data.size()),
+        translate_opts
+    );
+
+    if (!ir_module) {
+        std::cerr << "[Generator] IR translation failed\n";
+        return false;
+    }
+
+    std::cout << "[Generator] Translated to IR: " << ir_module.value()->functions().size() << " functions\n";
+
+    // Generate C code from IR using SwitchRecomp codegen
+    sr::codegen::CodegenOptions codegen_opts;
+    codegen_opts.module_name = module.name;
+    codegen_opts.emit_comments = true;
+
+    auto c_code = sr::codegen::GenerateC(*ir_module.value(), codegen_opts);
+    if (!c_code) {
+        std::cerr << "[Generator] C code generation failed\n";
+        return false;
+    }
+
+    // Write C code to output directory using C-style operations
+    std::string output_subdir = options_.output_dir + "/" + module.name;
+
+    // Create directory using system command (Windows mkdir)
+    std::string mkdir_cmd = "mkdir \"" + output_subdir + "\" 2>nul";
+    system(mkdir_cmd.c_str());
+
+    std::string c_file_path = output_subdir + "/" + module.name + ".c";
+
+    std::ofstream out(c_file_path.c_str());
+    if (!out) {
+        std::cerr << "[Generator] Failed to open output file: " << c_file_path << "\n";
+        return false;
+    }
+    out << c_code.value();
+    out.close();
+
+    std::cout << "[Generator] Generated C code: " << c_file_path << "\n";
+
     return true;
 }
 
