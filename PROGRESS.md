@@ -1,7 +1,7 @@
 # KirbyRecomp Project Progress
 
 **Last Updated:** 2024-11-14
-**Status:** Milestone 3 (HLE Service Framework) - COMPLETE
+**Status:** Milestone 5 (NVN Shader Translation) - IN PROGRESS
 
 ---
 
@@ -34,6 +34,18 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - ✅ SectionAlignment
 
 ### ✅ Milestone 3: HLE Service Framework - COMPLETE
+
+### ✅ Milestone 4: Code Generation Pipeline - COMPLETE
+- ✅ Capstone 5.x API compatibility fixes (capstone_wrapper, aarch64_decoder)
+- ✅ Translator library enabled and building (src/translator)
+- ✅ AArch64 → IR decoder integration using SwitchRecomp translator
+- ✅ IR → C codegen pipeline with ULL suffixes for 64-bit immediates
+- ✅ Generator tool (kirbyrecomp_gen.exe) for NSO → C pipeline
+- ✅ All 4 NSO modules processed (main, rtld, sdk, subsdk0)
+- ✅ C code compilation: main.c (4.5M lines), sdk.c (2.2M), subsdk0.c (3.7M), rtld.c (6KB)
+- ✅ Full executable linking with kirbyrecomp_rt, kirbyrecomp_hle, sr_runtime, SDL3, Vulkan, Opus, FFmpeg
+- ✅ Memory mapping, zero-page initialization, spin loop handling
+- ✅ Executable builds, links, and runs (stalls in OS initialization as expected)
 - ✅ Service registry framework (`kr::hle::ServiceManager`, `kr::hle::IService`)
 - ✅ Built-in services implemented:
   - `sm:` - Service Manager
@@ -66,6 +78,32 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - ✅ EventSynchronization
   - ✅ CloseHandle
 
+### 🔄 Milestone 5: NVN Shader Translation - IN PROGRESS
+- ✅ Created shader module structure (`src/shader/`)
+- ✅ NVN shader container format parser (`shader.h`/`shader.cpp`)
+  - NVN8 magic, header structure, section offsets
+  - Support for vertex, fragment, compute, geometry, tessellation stages
+- ✅ Maxwell ISA instruction decoder (`maxwell_decoder.h`/`maxwell_decoder.cpp`)
+  - 40+ Maxwell opcodes with format-specific decoding
+  - Register file support (GPR, Predicate, CCR, SR, UR, CR, TR, Sampler, ADDR)
+  - Operand types (register, immediate, constant, address)
+  - Format decoders: R, I, C, LDST, TEX, CTRL, SYNC, MISC
+- ✅ SPIR-V generator (`spirv_generator.h`/`spirv_generator.cpp`)
+  - Complete SPIR-V builder with all major instructions
+  - Type system: void, bool, int/float (8/16/32/64), vectors, matrices, images, samplers, arrays, structs, pointers, functions
+  - Constants, variables, functions, control flow, memory access
+  - Arithmetic (int/float), bitwise, comparison, vector ops, conversions
+  - Image/sampler operations, barriers, subgroup ops
+- ✅ NVN service integration (`src/hle/service.cpp`)
+  - `shader_create`: Parse Maxwell bytecode → translate to SPIR-V → create VkShaderModule
+  - `program_create`: Link shader stages → create pipeline layout → create graphics/compute pipelines
+  - Shader reflection extraction for resource bindings
+  - SPIR-V binary storage for pipeline creation
+- ✅ CMake integration for shader module (`src/shader/CMakeLists.txt`)
+- 🔄 Shader reflection implementation (inputs/outputs/descriptors)
+- 🔄 Pipeline cache generation
+- 🔄 Variant preparation for install-time compilation
+
 ---
 
 ## Known Limitations / Technical Debt
@@ -81,6 +119,10 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
 5. **Module name parsing** - Module name comes from MOD0 section in text segment, not from NSO header (currently empty string)
 
 6. **std::filesystem replaced with platform-independent implementation** - Due to mingw64 clang linking issues with libc++, FsService uses custom path handling with stat()/WIN32_FIND_DATA instead of std::filesystem
+
+7. **Maxwell decoder is simplified** - Real Maxwell encoding is more complex; dual-issue, predicate handling, and extended opcodes need work
+
+8. **SPIR-V generator needs validation** - Should integrate spirv-val for output validation
 
 ---
 
@@ -104,7 +146,14 @@ KirbyRecomp/
 │   ├── FindCapstone.cmake
 │   ├── Findnlohmann_json.cmake
 │   ├── Findopus.cmake
-# ... existing content ...
+├── src/
+│   ├── shader/                 # NEW: Shader translation module
+│   │   ├── CMakeLists.txt
+│   │   ├── shader.h/cpp        # NVN container parser, main translator
+│   │   ├── maxwell_decoder.h/cpp  # Maxwell ISA decoder
+│   │   ├── spirv_generator.h/cpp  # SPIR-V builder and translator
+│   ├── hle/
+│   │   └── service.cpp         # Updated: NVN shader_create/program_create integration
 ```
 
 ---
@@ -137,12 +186,33 @@ cd build && PATH="/c/msys64/mingw64/bin:/c/msys64/ucrt64/bin:/c/msys64/usr/bin:$
 
 ---
 
-## Next Steps (Milestone 4)
+## Next Steps (Milestone 5+)
 
-1. **Implement SVC handlers** in runtime (additional SVCs beyond threading)
-2. **Integrate with parsed NSO modules for code generation**
-3. **Implement translator library** (fix Capstone compatibility or use alternative)
-4. **Build the game** - generate C code from NSO modules, compile, and link
+1. **Complete Milestone 5: NVN Shader Translation**
+   - Finish shader reflection (extract inputs/outputs/descriptors from Maxwell bytecode)
+   - Implement pipeline cache generation at install time
+   - Add variant preparation for common state combinations
+   - Write tests for Maxwell → SPIR-V translation
+
+2. **Milestone 6: NVN → Vulkan Runtime**
+   - Command buffer parsing (Maxwell FIFO format)
+   - Resource management (textures, buffers, samplers)
+   - Pipeline state object mapping
+   - Draw/dispatch command translation
+   - Synchronization (fences, semaphores)
+   - Compute pipeline support
+   - Memory management (VMA integration)
+
+3. **Milestone 7: Audio HLE**
+   - audren, audout, hwopus full implementations
+
+4. **Milestone 8: Kirby Forgotten Land**
+   - Game-specific NSO modules, NVN commands, save data, performance optimization
+
+Additional immediate work:
+- Implement remaining SVC handlers for entry point to complete OS initialization
+- Implement thread creation/scheduling for multi-core simulation
+- Implement HLE service stubs called during game initialization
 
 ---
 

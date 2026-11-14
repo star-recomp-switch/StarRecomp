@@ -11,6 +11,12 @@
 #include <algorithm>
 #include <string>
 #include <sys/stat.h>
+#include <span>
+
+// Shader translator
+#include "kirbyrecomp/shader/shader.h"
+#include "kirbyrecomp/shader/maxwell_decoder.h"
+#include "kirbyrecomp/shader/spirv_generator.h"
 
 // Windows-specific Vulkan surface extension
 #if defined(_WIN32) || defined(__CYGWIN__)
@@ -1308,6 +1314,9 @@ private:
     VkSemaphore render_finished_semaphore_ = VK_NULL_HANDLE;
     VkFence in_flight_fence_ = VK_NULL_HANDLE;
 
+    // Shader translator
+    kirbyrecomp::shader::ShaderTranslator shader_translator_;
+
     // NVN object handles (simplified - in reality these would be proper objects)
     uint64_t next_object_id_ = 1;
     std::unordered_map<uint64_t, VkBuffer> buffers_;
@@ -1317,6 +1326,9 @@ private:
     std::unordered_map<uint64_t, VkImageView> texture_views_;
     std::unordered_map<uint64_t, VkSampler> samplers_;
     std::unordered_map<uint64_t, VkShaderModule> shaders_;
+    std::unordered_map<uint64_t, std::vector<uint32_t>> shader_spirv_;  // Store SPIR-V for pipeline creation
+    std::unordered_map<uint64_t, kirbyrecomp::shader::ShaderReflection> shader_reflections_;
+    std::unordered_map<uint64_t, std::vector<uint64_t>> programs_;  // program_id -> list of shader_ids
     std::unordered_map<uint64_t, VkPipeline> pipelines_;
     std::unordered_map<uint64_t, VkPipelineLayout> pipeline_layouts_;
 
@@ -1854,9 +1866,161 @@ private:
     }
 
     Result program_create(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
-        // Create shader program from SPIR-V
+        // NVN program_create input:
+        // - num_shaders (uint32_t)
+        // - shader_ids (array of uint64_t)
+
+        if (!in_data || in_size < 4) return Result::InvalidArgument;
+
+        const uint32_t* params = static_cast<const uint32_t*>(in_data);
+        uint32_t num_shaders = params[0];
+
+        if (in_size < 4 + num_shaders * 8) return Result::InvalidArgument;
+
+        const uint64_t* shader_ids = reinterpret_cast<const uint64_t*>(params + 1);
+
+        // Collect shader stages and modules
+        std::vector<VkPipelineShaderStageCreateInfo> stages;
+        stages.reserve(num_shaders);
+
+        for (uint32_t i = 0; i < num_shaders; ++i) {
+            uint64_t shader_id = shader_ids[i];
+            auto it = shaders_.find(shader_id);
+            if (it == shaders_.end()) {
+                return Result::NotFound;
+            }
+
+            auto refl_it = shader_reflections_.find(shader_id);
+            if (refl_it == shader_reflections_.end()) {
+                return Result::InvalidState;
+            }
+
+            VkPipelineShaderStageCreateInfo stage_info{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+            stage_info.module = it->second;
+            stage_info.pName = "main";
+
+            // Map NVN shader stage to Vulkan
+            switch (refl_it->second.stage) {
+                case kirbyrecomp::shader::NvnShaderStage::Vertex:
+                    stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::TessControl:
+                    stage_info.stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::TessEval:
+                    stage_info.stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Geometry:
+                    stage_info.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Fragment:
+                    stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Compute:
+                    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+                    break;
+                default:
+                    stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+                    break;
+            }
+
+            stages.push_back(stage_info);
+        }
+
+        // Create pipeline layout (simplified - would use reflection data)
+        VkPipelineLayoutCreateInfo pl_ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        // TODO: Use shader reflection to create proper descriptor set layouts
+
+        VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+        VkResult result = vkCreatePipelineLayout(device_, &pl_ci, nullptr, &pipeline_layout);
+        if (result != VK_SUCCESS) {
+            return Result::InvalidState;
+        }
+
+        // Create pipeline (graphics or compute based on stages)
+        VkPipeline pipeline = VK_NULL_HANDLE;
+
+        bool has_compute = false;
+        for (const auto& stage : stages) {
+            if (stage.stage == VK_SHADER_STAGE_COMPUTE_BIT) {
+                has_compute = true;
+                break;
+            }
+        }
+
+        if (has_compute) {
+            // Compute pipeline
+            VkComputePipelineCreateInfo cp_ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            cp_ci.stage = stages[0];
+            cp_ci.layout = pipeline_layout;
+
+            result = vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &cp_ci, nullptr, &pipeline);
+        } else {
+            // Graphics pipeline (minimal setup)
+            VkGraphicsPipelineCreateInfo gp_ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+            gp_ci.stageCount = static_cast<uint32_t>(stages.size());
+            gp_ci.pStages = stages.data();
+            gp_ci.layout = pipeline_layout;
+            gp_ci.renderPass = render_pass_;  // Would need proper render pass
+
+            // Minimal vertex input state
+            VkPipelineVertexInputStateCreateInfo vi_ci{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+            gp_ci.pVertexInputState = &vi_ci;
+
+            // Minimal input assembly
+            VkPipelineInputAssemblyStateCreateInfo ia_ci{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+            ia_ci.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            gp_ci.pInputAssemblyState = &ia_ci;
+
+            // Viewport state (dynamic)
+            VkPipelineViewportStateCreateInfo vp_ci{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+            vp_ci.viewportCount = 1;
+            vp_ci.scissorCount = 1;
+            gp_ci.pViewportState = &vp_ci;
+
+            // Rasterization
+            VkPipelineRasterizationStateCreateInfo rs_ci{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+            rs_ci.polygonMode = VK_POLYGON_MODE_FILL;
+            rs_ci.cullMode = VK_CULL_MODE_BACK_BIT;
+            rs_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
+            rs_ci.lineWidth = 1.0f;
+            gp_ci.pRasterizationState = &rs_ci;
+
+            // Multisample
+            VkPipelineMultisampleStateCreateInfo ms_ci{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+            ms_ci.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+            gp_ci.pMultisampleState = &ms_ci;
+
+            // Color blend
+            VkPipelineColorBlendAttachmentState cb_attachment{};
+            cb_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            VkPipelineColorBlendStateCreateInfo cb_ci{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+            cb_ci.attachmentCount = 1;
+            cb_ci.pAttachments = &cb_attachment;
+            gp_ci.pColorBlendState = &cb_ci;
+
+            // Dynamic state
+            VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+            VkPipelineDynamicStateCreateInfo ds_ci{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+            ds_ci.dynamicStateCount = 2;
+            ds_ci.pDynamicStates = dynamic_states;
+            gp_ci.pDynamicState = &ds_ci;
+
+            result = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &gp_ci, nullptr, &pipeline);
+        }
+
+        if (result != VK_SUCCESS) {
+            vkDestroyPipelineLayout(device_, pipeline_layout, nullptr);
+            return Result::InvalidState;
+        }
+
+        uint64_t program_id = next_object_id_++;
+        pipelines_[program_id] = pipeline;
+        pipeline_layouts_[program_id] = pipeline_layout;
+        programs_[program_id] = std::vector<uint64_t>(shader_ids, shader_ids + num_shaders);
+
         if (out_data && out_size >= 8) {
-            uint64_t program_id = next_object_id_++;
             *static_cast<uint64_t*>(out_data) = program_id;
         }
         return Result::Success;
@@ -1867,9 +2031,74 @@ private:
     }
 
     Result shader_create(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
-        // Create shader module from SPIR-V bytecode
+        // NVN shader_create input structure:
+        // - shader_stage (uint32_t)
+        // - bytecode_size (uint32_t)
+        // - bytecode_data (pointer or inline)
+
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        const uint32_t* params = static_cast<const uint32_t*>(in_data);
+        uint32_t shader_stage = params[0];
+        uint32_t bytecode_size = params[1];
+
+        // Get bytecode pointer (after the two uint32_t params)
+        const uint8_t* bytecode = nullptr;
+        if (in_size >= 8 + bytecode_size) {
+            bytecode = static_cast<const uint8_t*>(in_data) + 8;
+        } else if (in_size >= 12) {
+            // Bytecode pointer might be passed as 64-bit address
+            const uint64_t* ptr_params = static_cast<const uint64_t*>(in_data);
+            uint64_t bytecode_addr = ptr_params[1];  // Second param is pointer
+            // Note: In real implementation, would need to map guest address to host
+            // For now, assume bytecode follows directly
+            bytecode = static_cast<const uint8_t*>(in_data) + 8;
+            bytecode_size = static_cast<uint32_t>(in_size - 8);
+        }
+
+        if (!bytecode || bytecode_size == 0) {
+            return Result::InvalidArgument;
+        }
+
+        // Parse and translate Maxwell bytecode to SPIR-V
+        auto stage = static_cast<kirbyrecomp::shader::NvnShaderStage>(shader_stage);
+        auto parsed_shader = shader_translator_.parse_maxwell_bytecode(
+            std::span<const uint8_t>(bytecode, bytecode_size), stage);
+
+        if (!parsed_shader) {
+            return Result::InvalidArgument;
+        }
+
+        kirbyrecomp::shader::ShaderTranslationOptions options;
+        options.target_stage = stage;
+        auto spirv_module = shader_translator_.translate_to_spirv(*parsed_shader, options);
+
+        if (!spirv_module) {
+            return Result::InvalidState;
+        }
+
+        // Create Vulkan shader module
+        if (device_ == VK_NULL_HANDLE) {
+            return Result::InvalidState;
+        }
+
+        VkShaderModuleCreateInfo sm_ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        sm_ci.codeSize = spirv_module->words.size() * sizeof(uint32_t);
+        sm_ci.pCode = spirv_module->words.data();
+
+        VkShaderModule shader_module = VK_NULL_HANDLE;
+        VkResult result = vkCreateShaderModule(device_, &sm_ci, nullptr, &shader_module);
+        if (result != VK_SUCCESS) {
+            return Result::InvalidState;
+        }
+
+        // Store shader module and SPIR-V for later pipeline creation
+        uint64_t shader_id = next_object_id_++;
+        shaders_[shader_id] = shader_module;
+        shader_spirv_[shader_id] = spirv_module->words;
+        shader_reflections_[shader_id] = parsed_shader->reflection;
+
         if (out_data && out_size >= 8) {
-            uint64_t shader_id = next_object_id_++;
             *static_cast<uint64_t*>(out_data) = shader_id;
         }
         return Result::Success;

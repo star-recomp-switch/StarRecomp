@@ -97,6 +97,9 @@ add_subdirectory(src/nso)
 # Include HLE services
 add_subdirectory(src/hle)
 
+# Include shader translation module (Milestone 5)
+add_subdirectory(src/shader)
+
 # Generated sources directory
 file(MAKE_DIRECTORY ${KIRBYRECOMP_GENERATED_DIR})
 
