@@ -2,10 +2,15 @@
 // Implementation
 
 #include "kirbyrecomp/shader/shader.h"
+#include "kirbyrecomp/shader/maxwell_decoder.h"
+#include "kirbyrecomp/shader/spirv_generator.h"
 
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <sstream>
 
 namespace kirbyrecomp::shader {
 
@@ -168,15 +173,290 @@ bool ShaderTranslator::analyze_reflection(const ParsedShader& shader,
                                           ShaderReflection& reflection) {
     reflection.stage = static_cast<NvnShaderStage>(shader.header.shader_stage);
 
-    // TODO: Analyze instructions to extract:
-    // - Input/output variables (from LD/ST instructions to specific registers)
-    // - Resource bindings (from TEX, LDG, etc. instructions)
-    // - Push constants (from uniform register access)
-    // - Local workgroup size (for compute shaders)
+    // Use the detailed Maxwell decoder for reflection analysis
+    maxwell::Decoder decoder;
+    auto decoded = decoder.decode_instructions(
+        shader.raw_bytecode.data() + shader.header.code_offset,
+        shader.header.code_size,
+        0);
 
-    // Placeholder: set compute local size if compute shader
+    // Track register usage to identify inputs/outputs/resources
+    std::unordered_set<uint32_t> input_registers;   // Registers read before write
+    std::unordered_set<uint32_t> output_registers;  // Registers written
+    std::unordered_map<uint32_t, uint32_t> texture_registers;   // TR -> binding
+    std::unordered_map<uint32_t, uint32_t> sampler_registers;   // SR_SAM -> binding
+    std::unordered_map<uint32_t, uint32_t> uniform_registers;   // UR/CR -> binding
+    std::unordered_map<uint32_t, uint32_t> address_registers;   // ADDR -> buffer binding
+    std::unordered_set<uint32_t> global_load_registers;         // LDG src registers
+    std::unordered_set<uint32_t> global_store_registers;        // STG dst registers
+
+    // Track written registers to find outputs
+    std::unordered_set<uint32_t> written_registers;
+
+    for (const auto& inst : decoded) {
+        // Track destination registers (outputs)
+        for (const auto& dst : inst.dst_operands) {
+            if (dst.type == maxwell::OperandType::REGISTER) {
+                written_registers.insert(dst.reg.index);
+                output_registers.insert(dst.reg.index);
+
+                // Special handling for specific register files
+                if (dst.reg.file == maxwell::RegisterFile::TR) {
+                    // Texture register - track binding
+                    texture_registers[dst.reg.index] = static_cast<uint32_t>(texture_registers.size());
+                } else if (dst.reg.file == maxwell::RegisterFile::SAMPLER) {
+                    sampler_registers[dst.reg.index] = static_cast<uint32_t>(sampler_registers.size());
+                }
+            }
+        }
+
+        // Track source registers (inputs)
+        for (const auto& src : inst.src_operands) {
+            if (src.type == maxwell::OperandType::REGISTER) {
+                input_registers.insert(src.reg.index);
+
+                if (src.reg.file == maxwell::RegisterFile::UR || src.reg.file == maxwell::RegisterFile::CR) {
+                    uniform_registers[src.reg.index] = static_cast<uint32_t>(uniform_registers.size());
+                } else if (src.reg.file == maxwell::RegisterFile::ADDR) {
+                    address_registers[src.reg.index] = static_cast<uint32_t>(address_registers.size());
+                } else if (src.reg.file == maxwell::RegisterFile::TR) {
+                    texture_registers[src.reg.index] = static_cast<uint32_t>(texture_registers.size());
+                } else if (src.reg.file == maxwell::RegisterFile::SAMPLER) {
+                    sampler_registers[src.reg.index] = static_cast<uint32_t>(sampler_registers.size());
+                }
+            }
+        }
+
+        // Instruction-specific analysis
+        switch (inst.info.opcode) {
+            case MaxwellOpcode::LDG: {
+                // Global load - source is address register, destination is GPR
+                if (!inst.src_operands.empty() && inst.src_operands[0].type == maxwell::OperandType::REGISTER) {
+                    global_load_registers.insert(inst.src_operands[0].reg.index);
+                }
+                if (!inst.dst_operands.empty() && inst.dst_operands[0].type == maxwell::OperandType::REGISTER) {
+                    // The destination GPR receives data from a buffer
+                }
+                break;
+            }
+            case MaxwellOpcode::STG: {
+                // Global store - source0 is address, source1 is value
+                if (inst.src_operands.size() >= 2) {
+                    if (inst.src_operands[0].type == maxwell::OperandType::REGISTER) {
+                        global_store_registers.insert(inst.src_operands[0].reg.index);
+                    }
+                }
+                break;
+            }
+            case MaxwellOpcode::LDU: {
+                // Uniform/constant load - track uniform register usage
+                if (!inst.src_operands.empty() && inst.src_operands[0].type == maxwell::OperandType::REGISTER) {
+                    uniform_registers[inst.src_operands[0].reg.index] = static_cast<uint32_t>(uniform_registers.size());
+                }
+                break;
+            }
+            case MaxwellOpcode::TEX:
+            case MaxwellOpcode::TXF:
+            case MaxwellOpcode::TXL:
+            case MaxwellOpcode::TXD:
+            case MaxwellOpcode::TXB: {
+                // Texture operations - track texture/sampler registers
+                // Typically: dst=GPR, src0=texture_reg(TR), src1=sampler_reg(SAM), src2=coords(GPR)
+                if (inst.src_operands.size() >= 2) {
+                    if (inst.src_operands[0].type == maxwell::OperandType::REGISTER) {
+                        texture_registers[inst.src_operands[0].reg.index] = static_cast<uint32_t>(texture_registers.size());
+                    }
+                    if (inst.src_operands[1].type == maxwell::OperandType::REGISTER) {
+                        sampler_registers[inst.src_operands[1].reg.index] = static_cast<uint32_t>(sampler_registers.size());
+                    }
+                }
+                break;
+            }
+            case MaxwellOpcode::S2R: {
+                // Special register read - could be thread ID, workgroup ID, etc.
+                if (!inst.src_operands.empty() && inst.src_operands[0].type == maxwell::OperandType::REGISTER &&
+                    inst.src_operands[0].reg.file == maxwell::RegisterFile::SR) {
+                    // Special register - built-in variable
+                    uint32_t sr_index = inst.src_operands[0].reg.index;
+                    ShaderInput input;
+                    input.binding = 0;
+                    input.format = 0; // Will be filled based on SR
+                    input.name = "sr_" + std::to_string(sr_index);
+
+                    // Map known special registers
+                    switch (sr_index) {
+                        case 0:  // SR_TID_X / SR_CTAID_X
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32; // R32_UINT
+                            input.name = "gl_GlobalInvocationID.x";
+                            break;
+                        case 1:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_GlobalInvocationID.y";
+                            break;
+                        case 2:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_GlobalInvocationID.z";
+                            break;
+                        case 3:  // SR_CTAID_X
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_WorkGroupID.x";
+                            break;
+                        case 4:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_WorkGroupID.y";
+                            break;
+                        case 5:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_WorkGroupID.z";
+                            break;
+                        case 6:  // SR_NTID_X
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_LocalInvocationID.x";
+                            break;
+                        case 7:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_LocalInvocationID.y";
+                            break;
+                        case 8:
+                            input.location = 0;
+                            input.component_count = 1;
+                            input.format = 32;
+                            input.name = "gl_LocalInvocationID.z";
+                            break;
+                        default:
+                            input.location = static_cast<uint32_t>(reflection.inputs.size());
+                            input.component_count = 1;
+                            input.format = 32;
+                            break;
+                    }
+                    reflection.inputs.push_back(input);
+                }
+                break;
+            }
+            case MaxwellOpcode::BAR: {
+                // Barrier - indicates workgroup synchronization
+                break;
+            }
+            case MaxwellOpcode::EXIT: {
+                // Thread exit - end of shader
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    // Determine inputs: registers read but not written (or special registers)
+    for (uint32_t reg : input_registers) {
+        if (written_registers.find(reg) == written_registers.end()) {
+            ShaderInput input;
+            input.location = static_cast<uint32_t>(reflection.inputs.size());
+            input.binding = 0;
+            input.component_count = 4; // Assume vec4 by default
+            input.format = 32; // R32G32B32A32_SFLOAT
+            input.name = "in_reg_" + std::to_string(reg);
+            reflection.inputs.push_back(input);
+        }
+    }
+
+    // Determine outputs: registers written (especially near end of shader)
+    // For fragment shaders, the last written color register is the output
+    // For vertex shaders, position and other varyings are outputs
+    for (uint32_t reg : output_registers) {
+        ShaderOutput output;
+        output.location = static_cast<uint32_t>(reflection.outputs.size());
+        output.component_count = 4;
+        output.format = 32;
+        output.name = "out_reg_" + std::to_string(reg);
+        reflection.outputs.push_back(output);
+    }
+
+    // Build resources from tracked registers
+    // Uniform buffers (UR/CR)
+    if (!uniform_registers.empty()) {
+        ShaderResource ubo;
+        ubo.type = ShaderResource::Type::UniformBuffer;
+        ubo.binding = 0;
+        ubo.set = 0;
+        ubo.size = static_cast<uint32_t>(uniform_registers.size()) * 16; // Estimate
+        ubo.array_size = 1;
+        ubo.name = "UniformBuffer";
+        reflection.resources.push_back(ubo);
+    }
+
+    // Storage buffers (from LDG/STG address registers)
+    if (!address_registers.empty() || !global_load_registers.empty() || !global_store_registers.empty()) {
+        ShaderResource ssbo;
+        ssbo.type = ShaderResource::Type::StorageBuffer;
+        ssbo.binding = static_cast<uint32_t>(reflection.resources.size());
+        ssbo.set = 0;
+        ssbo.size = 0; // Runtime sized
+        ssbo.array_size = 1;
+        ssbo.name = "StorageBuffer";
+        reflection.resources.push_back(ssbo);
+    }
+
+    // Sampled images (texture + sampler pairs)
+    size_t tex_count = std::max(texture_registers.size(), sampler_registers.size());
+    for (size_t i = 0; i < tex_count; ++i) {
+        ShaderResource tex;
+        tex.type = ShaderResource::Type::SampledImage;
+        tex.binding = static_cast<uint32_t>(reflection.resources.size());
+        tex.set = 0;
+        tex.size = 0;
+        tex.array_size = 1;
+        tex.name = "Texture" + std::to_string(i);
+        reflection.resources.push_back(tex);
+    }
+
+    // Separate samplers if more samplers than textures
+    if (sampler_registers.size() > texture_registers.size()) {
+        for (size_t i = texture_registers.size(); i < sampler_registers.size(); ++i) {
+            ShaderResource samp;
+            samp.type = ShaderResource::Type::Sampler;
+            samp.binding = static_cast<uint32_t>(reflection.resources.size());
+            samp.set = 0;
+            samp.size = 0;
+            samp.array_size = 1;
+            samp.name = "Sampler" + std::to_string(i);
+            reflection.resources.push_back(samp);
+        }
+    }
+
+    // Push constants (if small number of uniforms)
+    if (uniform_registers.size() <= 16 && uniform_registers.size() > 0) {
+        ShaderResource pc;
+        pc.type = ShaderResource::Type::PushConstant;
+        pc.binding = 0;
+        pc.set = 0;
+        pc.size = static_cast<uint32_t>(uniform_registers.size()) * 16;
+        pc.array_size = 1;
+        pc.name = "PushConstants";
+        reflection.push_constant_ranges.push_back(0);  // offset
+        reflection.push_constant_ranges.push_back(pc.size); // size
+        reflection.resources.push_back(pc);
+    }
+
+    // Compute shader local workgroup size
     if (reflection.stage == NvnShaderStage::Compute) {
-        reflection.local_size_x = 64;  // Default, would be extracted from shader
+        // Try to extract from BAR instruction or special registers
+        reflection.local_size_x = 64;  // Default
         reflection.local_size_y = 1;
         reflection.local_size_z = 1;
     }
@@ -195,22 +475,34 @@ std::optional<SpvModule> ShaderTranslator::translate_to_spirv(
     const ShaderTranslationOptions& options) {
     last_error_.clear();
 
+    // Use the detailed Maxwell decoder
+    maxwell::Decoder decoder;
+    auto decoded = decoder.decode_instructions(
+        shader.raw_bytecode.data() + shader.header.code_offset,
+        shader.header.code_size,
+        0);
+
+    // Use the SPIR-V generator
+    spirv::ShaderTranslationOptions spirv_options;
+    spirv_options.target_stage = static_cast<NvnShaderStage>(shader.header.shader_stage);
+    spirv_options.local_size_x = shader.reflection.local_size_x;
+    spirv_options.local_size_y = shader.reflection.local_size_y;
+    spirv_options.local_size_z = shader.reflection.local_size_z;
+
+    auto spirv_module = spirv::translate_shader(decoded,
+        static_cast<NvnShaderStage>(shader.header.shader_stage),
+        spirv_options);
+
+    if (!spirv_module) {
+        last_error_ = "SPIR-V translation failed";
+        return std::nullopt;
+    }
+
+    // Convert to our SpvModule format
     SpvModule module;
-
-    if (!generate_spirv_header(module, shader)) {
-        return std::nullopt;
-    }
-
-    if (!generate_spirv_types(module, shader)) {
-        return std::nullopt;
-    }
-
-    if (!generate_spirv_function(module, shader)) {
-        return std::nullopt;
-    }
-
-    // End of module
-    module.words.push_back(0x00000005); // OpModuleEnd (5 bytes: opcode=5, word_count=1)
+    module.words = std::move(spirv_module->words);
+    module.version = spirv_module->version;
+    module.generator = spirv_module->generator;
 
     if (options.validate_spirv) {
         // TODO: Validate SPIR-V with spirv-val if available

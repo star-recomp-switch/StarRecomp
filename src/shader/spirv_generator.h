@@ -36,10 +36,6 @@ enum class SpvOp : uint16_t {
     OpExecutionMode         = 16,
     OpCapability            = 17,
 
-    // Debug
-    OpString                = 7,
-    OpLine                  = 8,
-
     // Type declaration
     OpTypeVoid              = 19,
     OpTypeBool              = 20,
@@ -129,6 +125,18 @@ enum class SpvOp : uint16_t {
     OpBitReverse            = 84,
     OpBitCount              = 85,
 
+    // Integer comparison
+    OpIEqual                = 165,
+    OpINotEqual             = 166,
+    OpUGreaterThan          = 167,
+    OpSGreaterThan          = 168,
+    OpUGreaterThanEqual     = 169,
+    OpSGreaterThanEqual     = 170,
+    OpULessThan             = 171,
+    OpSLessThan             = 172,
+    OpULessThanEqual        = 173,
+    OpSLessThanEqual        = 174,
+
     // Floating point
     OpFAdd                  = 86,
     OpFSub                  = 87,
@@ -156,7 +164,6 @@ enum class SpvOp : uint16_t {
     OpFConvert              = 109,
     OpSConvert              = 110,
     OpUConvert              = 111,
-    OpFNegate               = 106,
 
     // Vector
     OpVectorShuffle         = 112,
@@ -193,9 +200,6 @@ enum class SpvOp : uint16_t {
     OpConvertFToS           = 139,
     OpConvertSToF           = 140,
     OpConvertUToF           = 141,
-    OpUConvert              = 111,
-    OpSConvert              = 110,
-    OpFConvert              = 109,
 
     // Atomic
     OpAtomicLoad            = 175,
@@ -419,6 +423,8 @@ public:
     // Comparison
     uint32_t i_equal(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
     uint32_t i_not_equal(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
+    uint32_t u_greater_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
+    uint32_t u_less_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
     uint32_t s_greater_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
     uint32_t s_less_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
     uint32_t f_ord_equal(uint32_t result_type_id, uint32_t operand1, uint32_t operand2);
@@ -471,6 +477,17 @@ private:
     void emit(uint16_t opcode, const std::vector<uint32_t>& operands);
     void emit_with_result(uint16_t opcode, uint32_t result_type, uint32_t result_id,
                           const std::vector<uint32_t>& operands);
+};
+
+// Shader translation options (for spirv namespace)
+struct ShaderTranslationOptions {
+    bool optimize = true;
+    bool validate_spirv = true;
+    bool generate_debug_info = false;
+    NvnShaderStage target_stage = NvnShaderStage::Fragment;
+    uint32_t local_size_x = 64;
+    uint32_t local_size_y = 1;
+    uint32_t local_size_z = 1;
 };
 
 // ============================================================================

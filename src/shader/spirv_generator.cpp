@@ -230,9 +230,9 @@ uint32_t SpvBuilder::variable(uint32_t pointer_type_id, StorageClass storage_cla
 }
 
 uint32_t SpvBuilder::variable_with_name(uint32_t pointer_type_id, StorageClass storage_class,
-                                        const std::string& name, uint32_t initializer) {
+                                        const std::string& name_str, uint32_t initializer) {
     uint32_t id = variable(pointer_type_id, storage_class, initializer);
-    if (!name.empty()) name(id, name);
+    if (!name_str.empty()) this->name(id, name_str);
     return id;
 }
 
@@ -507,6 +507,21 @@ uint32_t SpvBuilder::s_less_than(uint32_t result_type_id, uint32_t operand1, uin
     return id;
 }
 
+// Additional comparison ops
+uint32_t SpvBuilder::u_greater_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2) {
+    uint32_t id = next_id_++;
+    emit_with_result(static_cast<uint16_t>(SpvOp::OpUGreaterThan), result_type_id, id,
+                     {operand1, operand2});
+    return id;
+}
+
+uint32_t SpvBuilder::u_less_than(uint32_t result_type_id, uint32_t operand1, uint32_t operand2) {
+    uint32_t id = next_id_++;
+    emit_with_result(static_cast<uint16_t>(SpvOp::OpULessThan), result_type_id, id,
+                     {operand1, operand2});
+    return id;
+}
+
 uint32_t SpvBuilder::f_ord_equal(uint32_t result_type_id, uint32_t operand1, uint32_t operand2) {
     uint32_t id = next_id_++;
     emit_with_result(static_cast<uint16_t>(SpvOp::OpFOrdEqual), result_type_id, id,
@@ -714,7 +729,7 @@ static void store_register(TranslationContext& ctx, const maxwell::Register& reg
 // ============================================================================
 
 bool translate_instruction(TranslationContext& ctx, const maxwell::DecodedInstruction& inst) {
-    using Opcode = maxwell::MaxwellOpcode;
+    using Opcode = kirbyrecomp::shader::MaxwellOpcode;
 
     // Handle predicate
     bool has_predicate = inst.predicate.index != 7;
@@ -752,15 +767,9 @@ bool translate_instruction(TranslationContext& ctx, const maxwell::DecodedInstru
             break;
         }
 
-        case Opcode::ISUB: {
-            if (inst.src_operands.size() >= 2 && inst.dst_operands.size() >= 1) {
-                uint32_t src0 = load_register(ctx, inst.src_operands[0].reg);
-                uint32_t src1 = load_register(ctx, inst.src_operands[1].reg);
-                uint32_t result = ctx.builder.isub(ctx.int32_type, src0, src1);
-                store_register(ctx, inst.dst_operands[0].reg, result);
-            }
-            break;
-        }
+        // ISUB not in Maxwell ISA - subtraction is IADD with negated operand
+        // Handled in IADD case below via operand negation
+        // case Opcode::ISUB: { }
 
         case Opcode::IMUL: {
             if (inst.src_operands.size() >= 2 && inst.dst_operands.size() >= 1) {
