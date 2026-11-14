@@ -1,6 +1,6 @@
 # KirbyRecomp Project Progress
 
-**Last Updated:** 2024-11-14
+**Last Updated:** 2026-11-14
 **Status:** Milestone 5 (NVN Shader Translation) - IN PROGRESS
 
 ---
@@ -100,7 +100,14 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Shader reflection extraction for resource bindings
   - SPIR-V binary storage for pipeline creation
 - ✅ CMake integration for shader module (`src/shader/CMakeLists.txt`)
-- 🔄 Shader reflection implementation (inputs/outputs/descriptors)
+- ✅ **Shader reflection implementation** - Extract inputs/outputs/descriptors from Maxwell bytecode
+  - Parse LDG/STG instructions for buffer bindings
+  - Parse TEX/TXF instructions for texture/sampler bindings
+  - Parse uniform register access for push constants / UBOs
+  - Extract vertex attributes from vertex shader
+  - Extract fragment outputs from fragment shader
+  - Extract compute local workgroup size
+  - Handle special registers (thread ID, workgroup ID, local invocation ID)
 - 🔄 Pipeline cache generation
 - 🔄 Variant preparation for install-time compilation
 

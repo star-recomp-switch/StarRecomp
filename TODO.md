@@ -69,13 +69,13 @@
   - SPIR-V binary storage for pipeline creation
 
 ### Remaining Milestone 5 Tasks
-- [ ] **Shader reflection implementation** - Extract inputs/outputs/descriptors from Maxwell bytecode
-  - [ ] Parse LDG/STG instructions for buffer bindings
-  - [ ] Parse TEX/TXF instructions for texture/sampler bindings
-  - [ ] Parse uniform register access for push constants / UBOs
-  - [ ] Extract vertex attributes from vertex shader
-  - [ ] Extract fragment outputs from fragment shader
-  - [ ] Extract compute local workgroup size
+- [x] **Shader reflection implementation** - Extract inputs/outputs/descriptors from Maxwell bytecode
+  - [x] Parse LDG/STG instructions for buffer bindings
+  - [x] Parse TEX/TXF instructions for texture/sampler bindings
+  - [x] Parse uniform register access for push constants / UBOs
+  - [x] Extract vertex attributes from vertex shader
+  - [x] Extract fragment outputs from fragment shader
+  - [x] Extract compute local workgroup size
 - [ ] **Pipeline cache generation** - Serialize VkPipelineCache at install time
   - [ ] Collect all shader variants during translation
   - [ ] Generate pipeline cache binary
