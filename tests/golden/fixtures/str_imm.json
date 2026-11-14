@@ -1,0 +1,26 @@
+{
+  "name": "str_imm",
+  "description": "STR X0, [X1, #16] - store 64-bit to memory with immediate offset",
+  "bytes": [0x00, 0x02, 0x00, 0xf9],
+  "initial_state": {
+    "x": ["0x123456789abcdef0", "0x2000"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x123456789abcdef0", "0x2000"],
+    "pc": "0x1004",
+    "memory": [
+      {
+        "address": "0x2010",
+        "value": "0x123456789abcdef0",
+        "size": 8
+      }
+    ]
+  },
+  "expected_ir": {
+    "opcode": "str",
+    "operands_count": 2,
+    "flags_affected": false
+  },
+  "tags": ["memory", "store", "str"]
+}

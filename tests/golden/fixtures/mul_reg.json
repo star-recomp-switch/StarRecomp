@@ -1,0 +1,19 @@
+{
+  "name": "mul_reg",
+  "description": "MUL X0, X1, X2 - 64-bit multiplication (low 64 bits of 128-bit product)",
+  "bytes": [0x00, 0x00, 0x01, 0x9b],
+  "initial_state": {
+    "x": ["0x0", "0x100000000", "0x2"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x200000000", "0x100000000", "0x2"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "mul",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "mul"]
+}

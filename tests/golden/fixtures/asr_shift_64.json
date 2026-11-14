@@ -1,0 +1,19 @@
+{
+  "name": "asr_shift_64",
+  "description": "ASR X0, X1, #64 - arithmetic shift right by 64 (masked to 0, result = original)",
+  "bytes": [0x00, 0x1c, 0x01, 0x93],
+  "initial_state": {
+    "x": ["0x0", "0x8000000000000000"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x8000000000000000", "0x8000000000000000"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "asr",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "shift", "asr", "edge-case", "shift-ge-64"]
+}

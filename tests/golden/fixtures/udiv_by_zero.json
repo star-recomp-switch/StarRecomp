@@ -1,0 +1,19 @@
+{
+  "name": "udiv_by_zero",
+  "description": "UDIV X0, X1, X2 - unsigned division by zero (returns 0 per AArch64)",
+  "bytes": [0x00, 0x00, 0x21, 0x9b],
+  "initial_state": {
+    "x": ["0x0", "0x100", "0x0"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x0", "0x100", "0x0"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "udiv",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "division", "udiv", "edge-case", "divide-by-zero"]
+}

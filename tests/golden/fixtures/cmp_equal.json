@@ -1,0 +1,21 @@
+{
+  "name": "cmp_equal",
+  "description": "CMP X0, X1 - compare equal registers (sets Z flag)",
+  "bytes": [0x1f, 0x00, 0x00, 0xeb],
+  "initial_state": {
+    "x": ["0x100", "0x100"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0x100", "0x100"],
+    "pc": "0x1004",
+    "pstate": "0x40000000"
+  },
+  "expected_ir": {
+    "opcode": "cmp",
+    "operands_count": 2,
+    "flags_affected": true
+  },
+  "tags": ["alu", "compare", "cmp", "flags", "zero-flag"]
+}

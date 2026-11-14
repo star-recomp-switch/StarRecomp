@@ -1,0 +1,19 @@
+{
+  "name": "add_imm",
+  "description": "ADD X0, X1, #0x10 - register-immediate addition",
+  "bytes": [0x20, 0x00, 0x00, 0x91],
+  "initial_state": {
+    "x": ["0x0", "0x100"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x120", "0x100"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "add",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "add", "immediate"]
+}

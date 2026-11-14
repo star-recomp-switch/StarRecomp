@@ -1,0 +1,19 @@
+{
+  "name": "lsr_shift_64",
+  "description": "LSR X0, X1, #64 - shift by 64 (masked to 0, result = original)",
+  "bytes": [0x00, 0x18, 0x01, 0xd3],
+  "initial_state": {
+    "x": ["0x0", "0x123456789abcdef"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x123456789abcdef", "0x123456789abcdef"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "lsr",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "shift", "lsr", "edge-case", "shift-ge-64"]
+}

@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  KIRBYRECOMP_INCLUDE: ${{ github.workspace }}/include
+
+jobs:
+  build-windows:
+    name: Windows (MSVC & Clang)
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - name: MSVC
+            generator: "Visual Studio 17 2022"
+            arch: "x64"
+            compiler: "msvc"
+          - name: Clang
+            generator: "Ninja"
+            arch: "x64"
+            compiler: "clang"
+            cc: "clang-cl"
+            cxx: "clang-cl"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ env.VCPKG_ROOT }}
+          vcpkgGitCommitId: "d2b28c0e8d3c6c1e8f8a8b8c8d8e8f8a8b8c8d8e8"
+          vcpkgArguments: sdl3 vma opus ffmpeg capstone
+          runVcpkgInstall: true
+
+      - name: Configure CMake (${{ matrix.name }})
+        shell: cmd
+        run: |
+          if "%MATRIX_COMPILER%"=="clang" (
+            cmake -S . -B build -G "%MATRIX_GENERATOR%" -A %MATRIX_ARCH% -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DVCPKG_ROOT=%VCPKG_ROOT%
+          ) else (
+            cmake -S . -B build -G "%MATRIX_GENERATOR%" -A %MATRIX_ARCH% -DCMAKE_BUILD_TYPE=Release -DVCPKG_ROOT=%VCPKG_ROOT%
+          )
+        env:
+          MATRIX_GENERATOR: ${{ matrix.generator }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+          MATRIX_COMPILER: ${{ matrix.compiler }}
+          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+
+      - name: Build (${{ matrix.name }})
+        shell: cmd
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests (${{ matrix.name }})
+        shell: cmd
+        run: ctest --test-dir build --output-on-failure -C Release
+
+  build-linux:
+    name: Linux (GCC & Clang)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: GCC
+            cc: gcc
+            cxx: g++
+          - name: Clang
+            cc: clang
+            cxx: clang++
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            libsdl3-dev libvulkan-dev libvma-dev \
+            libopus-dev libffmpeg-dev \
+            libcapstone-dev
+
+      - name: Configure CMake (${{ matrix.name }})
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+
+      - name: Build (${{ matrix.name }})
+        run: cmake --build build --parallel
+
+      - name: Run tests (${{ matrix.name }})
+        run: ctest --test-dir build --output-on-failure
+
+  check-format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-17
+      - name: Check format
+        run: |
+          find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | \
+            grep -v vendor | \
+            grep -v build | \
+            xargs clang-format-17 --dry-run --Werror
+
+  check-clang-tidy:
+    name: Clang Tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-tidy
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy-17
+      - name: Run clang-tidy
+        run: |
+          find . -name "*.cpp" | \
+            grep -v vendor | \
+            grep -v build | \
+            xargs clang-tidy-17 -p build --quiet

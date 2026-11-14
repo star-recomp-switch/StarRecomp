@@ -1,0 +1,21 @@
+{
+  "name": "add_carry",
+  "description": "ADDS W0, W1, W2 - 32-bit addition with carry out",
+  "bytes": [0x00, 0x00, 0x01, 0x11],
+  "initial_state": {
+    "x": ["0x0", "0xffffffff", "0x1"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0x0", "0xffffffff", "0x1"],
+    "pc": "0x1004",
+    "pstate": "0x60000000"
+  },
+  "expected_ir": {
+    "opcode": "add",
+    "operands_count": 3,
+    "flags_affected": true
+  },
+  "tags": ["alu", "add", "carry", "flags", "32bit", "edge-case"]
+}

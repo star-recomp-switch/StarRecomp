@@ -1,0 +1,19 @@
+{
+  "name": "eor_reg",
+  "description": "EOR X0, X1, X2 - bitwise XOR",
+  "bytes": [0x00, 0x00, 0x01, 0xca],
+  "initial_state": {
+    "x": ["0x0", "0xff00ff00", "0x00ff00ff"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0xffffffff", "0xff00ff00", "0x00ff00ff"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "eor",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "logic", "eor"]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "svc_call",
+  "description": "SVC #0x123 - supervisor call",
+  "bytes": [0x48, 0x24, 0x00, 0xd4],
+  "initial_state": {
+    "x": ["0x1", "0x2", "0x3", "0x4"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x1", "0x2", "0x3", "0x4"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "svc",
+    "operands_count": 1,
+    "flags_affected": false
+  },
+  "tags": ["system", "svc", "supervisor-call"]
+}

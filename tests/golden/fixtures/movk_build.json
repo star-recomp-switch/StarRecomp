@@ -1,0 +1,19 @@
+{
+  "name": "movk_build",
+  "description": "MOVK X0, #0x5678, LSL #16 - build 64-bit constant in parts",
+  "bytes": [0x78, 0x56, 0x70, 0xf2],
+  "initial_state": {
+    "x": ["0x12340000"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x12345678"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "movk",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["move", "movk", "immediate", "constant-building"]
+}

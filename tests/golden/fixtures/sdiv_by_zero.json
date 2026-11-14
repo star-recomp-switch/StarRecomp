@@ -1,0 +1,19 @@
+{
+  "name": "sdiv_by_zero",
+  "description": "SDIV X0, X1, X2 - signed division by zero (returns 0 per AArch64)",
+  "bytes": [0x00, 0x00, 0x41, 0x9b],
+  "initial_state": {
+    "x": ["0x0", "0x100", "0x0"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x0", "0x100", "0x0"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "sdiv",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "division", "sdiv", "edge-case", "divide-by-zero"]
+}

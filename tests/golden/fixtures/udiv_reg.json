@@ -1,0 +1,19 @@
+{
+  "name": "udiv_reg",
+  "description": "UDIV X0, X1, X2 - unsigned 64-bit division",
+  "bytes": [0x00, 0x00, 0x21, 0x9b],
+  "initial_state": {
+    "x": ["0x0", "0x20", "0x3"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x6", "0x20", "0x3"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "udiv",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "division", "udiv"]
+}

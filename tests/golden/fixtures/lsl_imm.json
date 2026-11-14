@@ -1,0 +1,19 @@
+{
+  "name": "lsl_imm",
+  "description": "LSL X0, X1, #3 - logical shift left by immediate",
+  "bytes": [0xe0, 0x03, 0x01, 0xd3],
+  "initial_state": {
+    "x": ["0x0", "0x1"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x8", "0x1"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "lsl",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "shift", "lsl"]
+}

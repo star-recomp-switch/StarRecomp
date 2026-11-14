@@ -1,0 +1,19 @@
+{
+  "name": "asr_imm",
+  "description": "ASR X0, X1, #2 - arithmetic shift right by immediate",
+  "bytes": [0x80, 0x04, 0x01, 0x93],
+  "initial_state": {
+    "x": ["0x0", "0xfffffffffffffffc"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0xffffffffffffffff", "0xfffffffffffffffc"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "asr",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "shift", "asr"]
+}

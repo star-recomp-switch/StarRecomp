@@ -1,0 +1,18 @@
+{
+  "name": "mov_imm",
+  "description": "MOV X0, #0x1234 - move immediate (using MOVZ)",
+  "bytes": [0x68, 0x24, 0x40, 0xd2],
+  "initial_state": {
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x1234"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "movz",
+    "operands_count": 2,
+    "flags_affected": false
+  },
+  "tags": ["move", "mov", "immediate"]
+}

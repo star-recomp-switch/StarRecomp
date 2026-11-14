@@ -1,0 +1,19 @@
+{
+  "name": "asr_negative",
+  "description": "ASR W0, W1, #1 - arithmetic shift right of negative 32-bit value (sign extension)",
+  "bytes": [0x40, 0x00, 0x01, 0x13],
+  "initial_state": {
+    "x": ["0x0", "0x80000000"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0xc0000000", "0x80000000"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "asr",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "shift", "asr", "negative", "sign-extension", "32bit", "edge-case"]
+}

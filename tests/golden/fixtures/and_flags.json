@@ -1,0 +1,21 @@
+{
+  "name": "and_flags",
+  "description": "ANDS X0, X1, X2 - bitwise AND with flags (N/Z)",
+  "bytes": [0x00, 0x00, 0x21, 0xaa],
+  "initial_state": {
+    "x": ["0x0", "0x0", "0xffffffffffffffff"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0x0", "0x0", "0xffffffffffffffff"],
+    "pc": "0x1004",
+    "pstate": "0x40000000"
+  },
+  "expected_ir": {
+    "opcode": "and",
+    "operands_count": 3,
+    "flags_affected": true
+  },
+  "tags": ["alu", "logic", "and", "flags", "edge-case"]
+}

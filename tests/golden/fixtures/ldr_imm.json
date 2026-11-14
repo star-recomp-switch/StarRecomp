@@ -1,0 +1,24 @@
+{
+  "name": "ldr_imm",
+  "description": "LDR X0, [X1, #8] - load 64-bit from memory with immediate offset",
+  "bytes": [0x00, 0x01, 0x00, 0xf9],
+  "initial_state": {
+    "x": ["0x0", "0x1000"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0xdeadbeefcafebabe", "0x1000"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "ldr",
+    "operands_count": 2,
+    "flags_affected": false
+  },
+  "expected_results_memory_setup": {
+    "address": "0x1008",
+    "value": "0xdeadbeefcafebabe",
+    "size": 8
+  },
+  "tags": ["memory", "load", "ldr"]
+}

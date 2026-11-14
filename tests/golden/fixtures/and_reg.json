@@ -1,0 +1,19 @@
+{
+  "name": "and_reg",
+  "description": "AND X0, X1, X2 - bitwise AND",
+  "bytes": [0x00, 0x00, 0x01, 0x8a],
+  "initial_state": {
+    "x": ["0x0", "0xff00ff00", "0x00ff00ff"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x0", "0xff00ff00", "0x00ff00ff"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "and",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "logic", "and"]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "sub_borrow",
+  "description": "SUBS W0, W1, W2 - 32-bit subtraction with borrow (carry clear)",
+  "bytes": [0x00, 0x40, 0x01, 0x51],
+  "initial_state": {
+    "x": ["0x0", "0x0", "0x1"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0xffffffff", "0x0", "0x1"],
+    "pc": "0x1004",
+    "pstate": "0x80000000"
+  },
+  "expected_ir": {
+    "opcode": "sub",
+    "operands_count": 3,
+    "flags_affected": true
+  },
+  "tags": ["alu", "sub", "borrow", "flags", "32bit", "edge-case"]
+}

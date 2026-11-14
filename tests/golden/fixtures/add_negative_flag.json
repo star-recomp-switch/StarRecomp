@@ -1,0 +1,21 @@
+{
+  "name": "add_negative_flag",
+  "description": "ADDS X0, X1, X2 - addition resulting in negative (N flag set)",
+  "bytes": [0x00, 0x00, 0x21, 0xab],
+  "initial_state": {
+    "x": ["0x0", "0x8000000000000000", "0x0"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0x8000000000000000", "0x8000000000000000", "0x0"],
+    "pc": "0x1004",
+    "pstate": "0x80000000"
+  },
+  "expected_ir": {
+    "opcode": "add",
+    "operands_count": 3,
+    "flags_affected": true
+  },
+  "tags": ["alu", "add", "flags", "negative-flag", "edge-case"]
+}

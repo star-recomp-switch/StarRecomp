@@ -1,0 +1,19 @@
+{
+  "name": "cbz_not_taken",
+  "description": "CBZ X0, label - compare and branch on zero (not taken, falls through)",
+  "bytes": [0x00, 0x00, 0x00, 0x34],
+  "initial_state": {
+    "x": ["0x1"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x1"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "cbz",
+    "operands_count": 2,
+    "flags_affected": false
+  },
+  "tags": ["branch", "cbz", "conditional"]
+}

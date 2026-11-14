@@ -1,0 +1,19 @@
+{
+  "name": "sub_reg",
+  "description": "SUB X0, X1, X2 - register-register subtraction",
+  "bytes": [0x00, 0x40, 0x01, 0xcb],
+  "initial_state": {
+    "x": ["0x0", "0x50", "0x20"],
+    "pc": "0x1000"
+  },
+  "expected_results": {
+    "x": ["0x30", "0x50", "0x20"],
+    "pc": "0x1004"
+  },
+  "expected_ir": {
+    "opcode": "sub",
+    "operands_count": 3,
+    "flags_affected": false
+  },
+  "tags": ["alu", "sub"]
+}

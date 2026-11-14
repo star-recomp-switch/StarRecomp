@@ -1,0 +1,21 @@
+{
+  "name": "cmp_reg",
+  "description": "CMP X0, X1 - compare registers (sets flags: N, Z, C, V)",
+  "bytes": [0x1f, 0x00, 0x00, 0xeb],
+  "initial_state": {
+    "x": ["0x10", "0x20"],
+    "pc": "0x1000",
+    "pstate": "0x0"
+  },
+  "expected_results": {
+    "x": ["0x10", "0x20"],
+    "pc": "0x1004",
+    "pstate": "0x80000000"
+  },
+  "expected_ir": {
+    "opcode": "cmp",
+    "operands_count": 2,
+    "flags_affected": true
+  },
+  "tags": ["alu", "compare", "cmp", "flags"]
+}

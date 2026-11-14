@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KirbyRecomp Golden Fixture",
+  "type": "object",
+  "required": ["name", "description", "bytes", "initial_state", "expected_results"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique test name (snake_case)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this test verifies"
+    },
+    "bytes": {
+      "type": "array",
+      "description": "ARM64 instruction bytes (little-endian, 4 bytes per instruction)",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "minItems": 4
+    },
+    "initial_state": {
+      "type": "object",
+      "description": "Initial CPU register state before execution",
+      "properties": {
+        "x": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+          "maxItems": 31,
+          "description": "General purpose registers X0-X30 as hex strings"
+        },
+        "sp": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$", "description": "Stack pointer"},
+        "pc": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$", "description": "Program counter"},
+        "pstate": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$", "description": "NZCV flags"}
+      }
+    },
+    "expected_results": {
+      "type": "object",
+      "description": "Expected state after execution",
+      "properties": {
+        "x": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+          "maxItems": 31,
+          "description": "Expected register values (only changed registers need to be specified)"
+        },
+        "sp": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+        "pc": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+        "pstate": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$", "description": "Expected NZCV flags"},
+        "memory": {
+          "type": "array",
+          "description": "Expected memory writes",
+          "items": {
+            "type": "object",
+            "properties": {
+              "address": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+              "value": {"type": "string", "pattern": "^0x[0-9a-fA-F]+$"},
+              "size": {"type": "integer", "enum": [1, 2, 4, 8, 16]}
+            },
+            "required": ["address", "value", "size"]
+          }
+        }
+      }
+    },
+    "expected_ir": {
+      "type": "object",
+      "description": "Expected IR structure for verification (optional)",
+      "properties": {
+        "opcode": {"type": "string"},
+        "operands_count": {"type": "integer"},
+        "flags_affected": {"type": "boolean"}
+      }
+    },
+    "compile_options": {
+      "type": "object",
+      "description": "Compiler-specific options",
+      "properties": {
+        "msvc": {"type": "boolean", "default": true},
+        "clang": {"type": "boolean", "default": true},
+        "optimization_level": {"type": "string", "enum": ["O0", "O2", "O3"], "default": "O2"}
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Tags for test categorization (e.g., 'alu', 'branch', 'edge-case', 'shift', 'division')"
+    }
+  }
+}
