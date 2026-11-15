@@ -173,10 +173,10 @@
 - [x] `audout:u` Audio Output (SDL3 audio callback - basic impl done)
 - [x] `hwopus:` Opus Decode (libopus - basic impl done)
 - [x] Buffer event system
-- [ ] Full audio pipeline integration
-- [ ] Audio session management
-- [ ] Proper audio format conversion (S16, F32, etc.)
-- [ ] Audio device enumeration
+- [x] Full audio pipeline integration
+- [x] Audio session management
+- [x] Proper audio format conversion (S16, F32, etc.)
+- [x] Audio device enumeration
 
 ---
 

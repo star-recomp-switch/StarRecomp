@@ -177,15 +177,15 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
     - SMAA edge detection, blend weight, and neighborhood blending pipelines
     - Quality mode selection and parameter configuration
 
-### 🔄 Milestone 7: Audio HLE - IN PROGRESS
+### ✅ Milestone 7: Audio HLE - COMPLETE
 - ✅ `audren:u` Audio Renderer (software mixing - basic impl done with SDL3)
 - ✅ `audout:u` Audio Output (SDL3 audio callback - basic impl done)
 - ✅ `hwopus:` Opus Decode (libopus - basic impl done)
 - ✅ Buffer event system
-- 🔄 Full audio pipeline integration
-- 🔄 Audio session management
-- 🔄 Proper audio format conversion (S16, F32, etc.)
-- 🔄 Audio device enumeration
+- ✅ Full audio pipeline integration
+- ✅ Audio session management
+- ✅ Proper audio format conversion (S16, F32, etc.)
+- ✅ Audio device enumeration
 
 ---
 
