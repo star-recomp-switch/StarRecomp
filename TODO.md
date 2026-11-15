@@ -187,7 +187,7 @@
 - [x] Game-specific NVN commands
 - [x] Color LUT handling fix
 - [x] Depth clamp implementation
-- [ ] Save data support (DISF/DPFS, AES-CMAC)
+- [x] Save data support (DISF/DPFS, AES-CMAC)
 - [ ] Performance profiling & optimization
 - [ ] 120 FPS mode implementation
 - [ ] Full playthrough validation

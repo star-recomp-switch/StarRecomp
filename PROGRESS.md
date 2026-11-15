@@ -193,7 +193,14 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
 - ✅ Game-specific NVN commands (KflNvnCommandHandler)
 - ✅ Color LUT handling fix
 - ✅ Depth clamp implementation
-- 🔄 Save data support (DISF/DPFS, AES-CMAC)
+- ✅ Save data support (DISF/DPFS, AES-CMAC)
+  - DISF/DPFS save data format support
+  - AES-CMAC implementation using OpenSSL
+  - SaveDataManager for creating, loading, updating, deleting saves
+  - AES-CMAC verification for save integrity
+  - Save encryption (XOR-based for now)
+  - Save metadata tracking (playtime, completion, world/stage)
+  - Save listing and verification
 - 🔄 Performance profiling & optimization
 - 🔄 120 FPS mode implementation
 - 🔄 Full playthrough validation
