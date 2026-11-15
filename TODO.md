@@ -121,9 +121,18 @@
   - Command pool/buffer allocation
   - Synchronization primitives (fence, semaphore, event)
   - Memory type selection and format mapping
-- [ ] Command processor dispatch to Vulkan
+- [x] Command buffer translator (command_translator.h/cpp)
+  - PipelineState tracking (vertex buffers, index buffer, descriptor sets, dynamic state)
+  - Draw commands: DRAW_ARRAYS, DRAW_ELEMENTS, DRAW_ARRAYS_INSTANCED, DRAW_ELEMENTS_INSTANCED
+  - Compute dispatch: DISPATCH
+  - Resource binding: vertex/index buffers, shader resources, samplers, shaders
+  - Pipeline state: viewport, scissor, sample mask
+  - Buffer copies: COPY_BUFFER, COPY_BUFFER_REGION, UPDATE_BUFFER
+  - Synchronization: BARRIER (memory/execution)
+  - Dynamic state application (viewport, scissor)
+  - Descriptor write flushing
+  - Pipeline state management
 - [ ] PSO creation & caching with proper descriptor set layouts
-- [ ] Draw/dispatch command translation to Vulkan
 - [ ] Synchronization (fences, semaphores, events, timeline semaphores)
 - [ ] Compute pipeline support
 - [ ] VMA integration for memory allocation
