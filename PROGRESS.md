@@ -214,7 +214,11 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Frame rate limiting
   - JSON and Chrome trace format export
   - Scoped event macros for easy instrumentation
-- 🔄 120 FPS mode implementation
+- ✅ 120 FPS mode implementation
+  - Frame pacing in swapchain_acquire_next_image with 8.33ms target frame time
+  - High-resolution timestamp tracking for accurate frame timing
+  - Configurable target refresh rate (default 120 FPS)
+  - Frame pacing with high-resolution sleep for precise timing
 - 🔄 Full playthrough validation
 
 ---

@@ -189,7 +189,7 @@
 - [x] Depth clamp implementation
 - [x] Save data support (DISF/DPFS, AES-CMAC)
 - [x] Performance profiling & optimization
-- [ ] 120 FPS mode implementation
+- [x] 120 FPS mode implementation
 - [ ] Full playthrough validation
 
 ---
