@@ -1,10 +1,12 @@
 // NVN Resource Manager Implementation
 
 #include "kirbyrecomp/nvn/resource_manager.h"
+#include "kirbyrecomp/shader/shader.h"
 
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 namespace kirbyrecomp::nvn {
 
@@ -590,17 +592,463 @@ std::optional<const SamplerResource*> ResourceManager::get_sampler(uint64_t hand
 }
 
 // ============================================================================
-// Pipeline Management (stub - to be implemented)
+// Shader Module Management
 // ============================================================================
 
-uint64_t ResourceManager::create_graphics_pipeline(const class PipelineDesc& desc) {
-    // TODO: Implement graphics pipeline creation
-    return 0;
+uint64_t ResourceManager::create_shader_module(const std::vector<uint32_t>& spirv_binary,
+                                              const kirbyrecomp::shader::ShaderReflection& reflection) {
+    uint64_t handle = allocate_handle();
+
+    ShaderModuleResource resource;
+    resource.spirv_binary = spirv_binary;
+    resource.reflection = reflection;
+
+    VkShaderModuleCreateInfo sm_ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    sm_ci.codeSize = spirv_binary.size() * sizeof(uint32_t);
+    sm_ci.pCode = spirv_binary.data();
+
+    VkResult result = vkCreateShaderModule(device_, &sm_ci, nullptr, &resource.module);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateShaderModule failed: " + std::to_string(result);
+        return 0;
+    }
+
+    shader_modules_[handle] = std::move(resource);
+    return handle;
 }
 
-uint64_t ResourceManager::create_compute_pipeline(const class ComputePipelineDesc& desc) {
-    // TODO: Implement compute pipeline creation
-    return 0;
+void ResourceManager::destroy_shader_module(uint64_t handle) {
+    auto it = shader_modules_.find(handle);
+    if (it == shader_modules_.end()) return;
+
+    if (it->second.module != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(device_, it->second.module, nullptr);
+    }
+    shader_modules_.erase(it);
+}
+
+std::optional<ShaderModuleResource*> ResourceManager::get_shader_module(uint64_t handle) {
+    auto it = shader_modules_.find(handle);
+    if (it == shader_modules_.end()) return std::nullopt;
+    return &it->second;
+}
+
+std::optional<const ShaderModuleResource*> ResourceManager::get_shader_module(uint64_t handle) const {
+    auto it = shader_modules_.find(handle);
+    if (it == shader_modules_.end()) return std::nullopt;
+    return &it->second;
+}
+
+// ============================================================================
+// Pipeline Management
+// ============================================================================
+
+// Helper: Convert shader resource type to Vulkan descriptor type
+static VkDescriptorType resource_type_to_vk_descriptor_type(
+    const kirbyrecomp::shader::ShaderResource::Type type) {
+    switch (type) {
+        case kirbyrecomp::shader::ShaderResource::Type::UniformBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case kirbyrecomp::shader::ShaderResource::Type::StorageBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case kirbyrecomp::shader::ShaderResource::Type::SampledImage:
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case kirbyrecomp::shader::ShaderResource::Type::StorageImage:
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case kirbyrecomp::shader::ShaderResource::Type::Sampler:
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case kirbyrecomp::shader::ShaderResource::Type::PushConstant:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; // Not used for descriptor sets
+        case kirbyrecomp::shader::ShaderResource::Type::InputAttachment:
+            return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        default:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+}
+
+// Helper: Convert shader stage to Vulkan shader stage flag bits
+static VkShaderStageFlagBits shader_stage_to_vk_stage(
+    const kirbyrecomp::shader::NvnShaderStage stage) {
+    switch (stage) {
+        case kirbyrecomp::shader::NvnShaderStage::Vertex:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case kirbyrecomp::shader::NvnShaderStage::TessControl:
+            return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case kirbyrecomp::shader::NvnShaderStage::TessEval:
+            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case kirbyrecomp::shader::NvnShaderStage::Geometry:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case kirbyrecomp::shader::NvnShaderStage::Fragment:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case kirbyrecomp::shader::NvnShaderStage::Compute:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        default:
+            return VK_SHADER_STAGE_ALL;
+    }
+}
+
+VkDescriptorSetLayout ResourceManager::create_descriptor_set_layout(
+    const kirbyrecomp::shader::ShaderReflection& reflection,
+    uint32_t set) {
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+    for (const auto& resource : reflection.resources) {
+        if (resource.set != set) continue;
+
+        VkDescriptorSetLayoutBinding binding{};
+        binding.binding = resource.binding;
+        binding.descriptorType = resource_type_to_vk_descriptor_type(resource.type);
+        binding.descriptorCount = resource.array_size > 0 ? resource.array_size : 1;
+        binding.stageFlags = shader_stage_to_vk_stage(reflection.stage);
+
+        // For combined image samplers, the stage is fragment for graphics
+        if (resource.type == kirbyrecomp::shader::ShaderResource::Type::SampledImage ||
+            resource.type == kirbyrecomp::shader::ShaderResource::Type::StorageImage) {
+            binding.stageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
+
+        bindings.push_back(binding);
+    }
+
+    // Add push constant "binding" if present (handled separately in pipeline layout)
+    // Push constants don't go in descriptor set layouts
+
+    VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+    layout_info.pBindings = bindings.data();
+
+    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+    VkResult result = vkCreateDescriptorSetLayout(device_, &layout_info, nullptr, &layout);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateDescriptorSetLayout failed: " + std::to_string(result);
+        return VK_NULL_HANDLE;
+    }
+
+    return layout;
+}
+
+std::vector<VkDescriptorSetLayout> ResourceManager::create_descriptor_set_layouts(
+    const std::vector<kirbyrecomp::shader::ShaderReflection>& reflections) {
+
+    // Collect all unique set indices
+    std::set<uint32_t> set_indices;
+    for (const auto& refl : reflections) {
+        for (const auto& resource : refl.resources) {
+            set_indices.insert(resource.set);
+        }
+    }
+
+    std::vector<VkDescriptorSetLayout> layouts;
+    layouts.reserve(set_indices.size());
+
+    for (uint32_t set : set_indices) {
+        // Merge resources from all stages for this set
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+        for (const auto& refl : reflections) {
+            for (const auto& resource : refl.resources) {
+                if (resource.set != set) continue;
+
+                VkDescriptorSetLayoutBinding binding{};
+                binding.binding = resource.binding;
+                binding.descriptorType = resource_type_to_vk_descriptor_type(resource.type);
+                binding.descriptorCount = resource.array_size > 0 ? resource.array_size : 1;
+                binding.stageFlags = shader_stage_to_vk_stage(refl.stage);
+
+                if (resource.type == kirbyrecomp::shader::ShaderResource::Type::SampledImage ||
+                    resource.type == kirbyrecomp::shader::ShaderResource::Type::StorageImage) {
+                    binding.stageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+                }
+
+                // Check if binding already exists
+                auto it = std::find_if(bindings.begin(), bindings.end(),
+                    [&](const VkDescriptorSetLayoutBinding& b) { return b.binding == binding.binding; });
+
+                if (it == bindings.end()) {
+                    bindings.push_back(binding);
+                } else {
+                    // Merge stage flags
+                    it->stageFlags |= binding.stageFlags;
+                }
+            }
+        }
+
+        if (bindings.empty()) continue;
+
+        VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+        layout_info.pBindings = bindings.data();
+
+        VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+        VkResult result = vkCreateDescriptorSetLayout(device_, &layout_info, nullptr, &layout);
+        if (result != VK_SUCCESS) {
+            last_error_ = "vkCreateDescriptorSetLayout failed: " + std::to_string(result);
+            // Clean up already created layouts
+            for (auto l : layouts) {
+                vkDestroyDescriptorSetLayout(device_, l, nullptr);
+            }
+            return {};
+        }
+
+        layouts.push_back(layout);
+    }
+
+    return layouts;
+}
+
+VkPipelineLayout ResourceManager::create_pipeline_layout(
+    const std::vector<VkDescriptorSetLayout>& set_layouts,
+    const std::vector<PipelineDesc::PushConstantRange>& push_constant_ranges) {
+
+    std::vector<VkPushConstantRange> vk_push_constants;
+    vk_push_constants.reserve(push_constant_ranges.size());
+
+    for (const auto& pc : push_constant_ranges) {
+        VkPushConstantRange range{};
+        range.stageFlags = pc.stage_flags;
+        range.offset = pc.offset;
+        range.size = pc.size;
+        vk_push_constants.push_back(range);
+    }
+
+    VkPipelineLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout_info.setLayoutCount = static_cast<uint32_t>(set_layouts.size());
+    layout_info.pSetLayouts = set_layouts.data();
+    layout_info.pushConstantRangeCount = static_cast<uint32_t>(vk_push_constants.size());
+    layout_info.pPushConstantRanges = vk_push_constants.data();
+
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VkResult result = vkCreatePipelineLayout(device_, &layout_info, nullptr, &layout);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreatePipelineLayout failed: " + std::to_string(result);
+        return VK_NULL_HANDLE;
+    }
+
+    return layout;
+}
+
+uint64_t ResourceManager::create_graphics_pipeline(const PipelineDesc& desc) {
+    // Create descriptor set layouts from shader reflections
+    auto set_layouts = create_descriptor_set_layouts(desc.shader_reflections);
+    if (set_layouts.empty() && !desc.shader_reflections.empty()) {
+        // Might have failed
+        if (last_error_.empty()) {
+            last_error_ = "Failed to create descriptor set layouts";
+        }
+        return 0;
+    }
+
+    // Create pipeline layout with push constants
+    VkPipelineLayout pipeline_layout = create_pipeline_layout(set_layouts, desc.push_constant_ranges);
+    if (pipeline_layout == VK_NULL_HANDLE) {
+        // Clean up descriptor set layouts
+        for (auto layout : set_layouts) {
+            if (layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        }
+        return 0;
+    }
+
+    // Create shader stages
+    std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+    shader_stages.reserve(desc.shader_handles.size());
+
+    for (size_t i = 0; i < desc.shader_handles.size() && i < desc.shader_reflections.size(); ++i) {
+        auto shader_opt = get_shader_module(desc.shader_handles[i]);
+        if (!shader_opt || !*shader_opt) continue;
+
+        VkPipelineShaderStageCreateInfo stage_info{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stage_info.module = (*shader_opt)->module;
+        stage_info.pName = "main";
+        stage_info.stage = shader_stage_to_vk_stage(desc.shader_reflections[i].stage);
+
+        shader_stages.push_back(stage_info);
+    }
+
+    if (shader_stages.empty()) {
+        last_error_ = "No valid shader stages for pipeline";
+        vkDestroyPipelineLayout(device_, pipeline_layout, nullptr);
+        for (auto layout : set_layouts) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        return 0;
+    }
+
+    // Vertex input state
+    std::vector<VkVertexInputBindingDescription> binding_descs;
+    std::vector<VkVertexInputAttributeDescription> attribute_descs;
+
+    for (const auto& binding : desc.vertex_bindings) {
+        VkVertexInputBindingDescription vk_binding{};
+        vk_binding.binding = binding.binding;
+        vk_binding.stride = binding.stride;
+        vk_binding.inputRate = binding.input_rate;
+        binding_descs.push_back(vk_binding);
+    }
+
+    for (const auto& attr : desc.vertex_attributes) {
+        VkVertexInputAttributeDescription vk_attr{};
+        vk_attr.location = attr.location;
+        vk_attr.binding = attr.binding;
+        vk_attr.format = attr.format;
+        vk_attr.offset = attr.offset;
+        attribute_descs.push_back(vk_attr);
+    }
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_info{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vertex_input_info.vertexBindingDescriptionCount = static_cast<uint32_t>(binding_descs.size());
+    vertex_input_info.pVertexBindingDescriptions = binding_descs.data();
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descs.size());
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descs.data();
+
+    // Input assembly
+    VkPipelineInputAssemblyStateCreateInfo input_assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    input_assembly.topology = desc.topology;
+    input_assembly.primitiveRestartEnable = desc.primitive_restart_enable ? VK_TRUE : VK_FALSE;
+
+    // Viewport state (dynamic)
+    VkPipelineViewportStateCreateInfo viewport_state{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    viewport_state.viewportCount = desc.viewport_count;
+    viewport_state.scissorCount = desc.scissor_count;
+
+    // Rasterization
+    VkPipelineRasterizationStateCreateInfo rasterizer{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = desc.polygon_mode;
+    rasterizer.cullMode = desc.cull_mode;
+    rasterizer.frontFace = desc.front_face;
+    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.lineWidth = desc.line_width;
+
+    // Multisample
+    VkPipelineMultisampleStateCreateInfo multisampling{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    multisampling.sampleShadingEnable = desc.sample_shading_enable ? VK_TRUE : VK_FALSE;
+    multisampling.rasterizationSamples = desc.rasterization_samples;
+
+    // Depth/Stencil
+    VkPipelineDepthStencilStateCreateInfo depth_stencil{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depth_stencil.depthTestEnable = desc.depth_test_enable ? VK_TRUE : VK_FALSE;
+    depth_stencil.depthWriteEnable = desc.depth_write_enable ? VK_TRUE : VK_FALSE;
+    depth_stencil.depthCompareOp = desc.depth_compare_op;
+    depth_stencil.depthBoundsTestEnable = desc.depth_bounds_test_enable ? VK_TRUE : VK_FALSE;
+    depth_stencil.stencilTestEnable = desc.stencil_test_enable ? VK_TRUE : VK_FALSE;
+
+    // Color blend
+    std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachments;
+    color_blend_attachments.reserve(desc.color_blend_attachments.size());
+
+    for (const auto& cb : desc.color_blend_attachments) {
+        VkPipelineColorBlendAttachmentState attachment{};
+        attachment.blendEnable = cb.blend_enable ? VK_TRUE : VK_FALSE;
+        attachment.srcColorBlendFactor = cb.src_color_blend_factor;
+        attachment.dstColorBlendFactor = cb.dst_color_blend_factor;
+        attachment.colorBlendOp = cb.color_blend_op;
+        attachment.srcAlphaBlendFactor = cb.src_alpha_blend_factor;
+        attachment.dstAlphaBlendFactor = cb.dst_alpha_blend_factor;
+        attachment.alphaBlendOp = cb.alpha_blend_op;
+        attachment.colorWriteMask = cb.color_write_mask;
+        color_blend_attachments.push_back(attachment);
+    }
+
+    VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    color_blend.logicOpEnable = VK_FALSE;
+    color_blend.attachmentCount = static_cast<uint32_t>(color_blend_attachments.size());
+    color_blend.pAttachments = color_blend_attachments.data();
+
+    // Dynamic state
+    VkPipelineDynamicStateCreateInfo dynamic_state{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamic_state.dynamicStateCount = static_cast<uint32_t>(desc.dynamic_states.size());
+    dynamic_state.pDynamicStates = desc.dynamic_states.data();
+
+    // Create graphics pipeline
+    VkGraphicsPipelineCreateInfo pipeline_info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipeline_info.stageCount = static_cast<uint32_t>(shader_stages.size());
+    pipeline_info.pStages = shader_stages.data();
+    pipeline_info.pVertexInputState = &vertex_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly;
+    pipeline_info.pViewportState = &viewport_state;
+    pipeline_info.pRasterizationState = &rasterizer;
+    pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pDepthStencilState = &depth_stencil;
+    pipeline_info.pColorBlendState = &color_blend;
+    pipeline_info.pDynamicState = &dynamic_state;
+    pipeline_info.layout = pipeline_layout;
+    pipeline_info.renderPass = VK_NULL_HANDLE; // Will be set at draw time
+    pipeline_info.subpass = 0;
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_info.basePipelineIndex = -1;
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkResult result = vkCreateGraphicsPipelines(device_, pipeline_cache_, 1, &pipeline_info, nullptr, &pipeline);
+
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateGraphicsPipelines failed: " + std::to_string(result);
+        vkDestroyPipelineLayout(device_, pipeline_layout, nullptr);
+        for (auto layout : set_layouts) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        return 0;
+    }
+
+    // Store pipeline and clean up descriptor set layouts
+    uint64_t handle = allocate_handle();
+    PipelineResource resource;
+    resource.pipeline = pipeline;
+    resource.layout = pipeline_layout;
+    resource.descriptor_set_layouts = std::move(set_layouts);
+    pipelines_[handle] = std::move(resource);
+
+    return handle;
+}
+
+uint64_t ResourceManager::create_compute_pipeline(const ComputePipelineDesc& desc) {
+    // Create descriptor set layouts from shader reflection
+    std::vector<kirbyrecomp::shader::ShaderReflection> reflections = { desc.shader_reflection };
+    auto set_layouts = create_descriptor_set_layouts(reflections);
+
+    // Create pipeline layout with push constants
+    VkPipelineLayout pipeline_layout = create_pipeline_layout(set_layouts, desc.push_constant_ranges);
+    if (pipeline_layout == VK_NULL_HANDLE) {
+        for (auto layout : set_layouts) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        return 0;
+    }
+
+    // Get shader module
+    auto shader_opt = get_shader_module(desc.shader_handle);
+    if (!shader_opt || !*shader_opt) {
+        last_error_ = "Shader module not found for compute pipeline";
+        vkDestroyPipelineLayout(device_, pipeline_layout, nullptr);
+        for (auto layout : set_layouts) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        return 0;
+    }
+
+    // Create shader stage
+    VkPipelineShaderStageCreateInfo stage_info{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stage_info.module = (*shader_opt)->module;
+    stage_info.pName = "main";
+    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Create compute pipeline
+    VkComputePipelineCreateInfo pipeline_info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    pipeline_info.stage = stage_info;
+    pipeline_info.layout = pipeline_layout;
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkResult result = vkCreateComputePipelines(device_, pipeline_cache_, 1, &pipeline_info, nullptr, &pipeline);
+
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateComputePipelines failed: " + std::to_string(result);
+        vkDestroyPipelineLayout(device_, pipeline_layout, nullptr);
+        for (auto layout : set_layouts) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        return 0;
+    }
+
+    // Store pipeline
+    uint64_t handle = allocate_handle();
+    PipelineResource resource;
+    resource.pipeline = pipeline;
+    resource.layout = pipeline_layout;
+    resource.descriptor_set_layouts = std::move(set_layouts);
+    pipelines_[handle] = std::move(resource);
+
+    return handle;
 }
 
 void ResourceManager::destroy_pipeline(uint64_t handle) {

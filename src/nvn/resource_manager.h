@@ -10,6 +10,9 @@
 #include <string>
 #include <vulkan/vulkan.h>
 
+// Include shader reflection types (needed for PipelineDesc, ShaderModuleResource)
+#include "kirbyrecomp/shader/shader.h"
+
 namespace kirbyrecomp::nvn {
 
 // ============================================================================
@@ -218,6 +221,93 @@ struct SamplerDesc {
 };
 
 // ============================================================================
+// Pipeline Descriptions (using shader reflection)
+// ============================================================================
+
+struct VertexInputAttribute {
+    uint32_t location;
+    uint32_t binding;
+    VkFormat format;
+    uint32_t offset;
+};
+
+struct VertexInputBinding {
+    uint32_t binding;
+    uint32_t stride;
+    VkVertexInputRate input_rate;
+};
+
+struct PipelineDesc {
+    // Shader stages
+    std::vector<uint64_t> shader_handles;  // Shader module handles
+
+    // Shader reflection data for each stage
+    std::vector<kirbyrecomp::shader::ShaderReflection> shader_reflections;
+
+    // Vertex input state
+    std::vector<VertexInputAttribute> vertex_attributes;
+    std::vector<VertexInputBinding> vertex_bindings;
+
+    // Input assembly
+    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    bool primitive_restart_enable = false;
+
+    // Viewport/Scissor (dynamic)
+    uint32_t viewport_count = 1;
+    uint32_t scissor_count = 1;
+
+    // Rasterization
+    VkPolygonMode polygon_mode = VK_POLYGON_MODE_FILL;
+    VkCullModeFlags cull_mode = VK_CULL_MODE_BACK_BIT;
+    VkFrontFace front_face = VK_FRONT_FACE_CLOCKWISE;
+    float line_width = 1.0f;
+
+    // Multisample
+    VkSampleCountFlagBits rasterization_samples = VK_SAMPLE_COUNT_1_BIT;
+    bool sample_shading_enable = false;
+
+    // Depth/Stencil
+    bool depth_test_enable = true;
+    bool depth_write_enable = true;
+    VkCompareOp depth_compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
+    bool depth_bounds_test_enable = false;
+    bool stencil_test_enable = false;
+
+    // Color blend
+    struct BlendAttachmentState {
+        bool blend_enable = false;
+        VkBlendFactor src_color_blend_factor = VK_BLEND_FACTOR_ONE;
+        VkBlendFactor dst_color_blend_factor = VK_BLEND_FACTOR_ZERO;
+        VkBlendOp color_blend_op = VK_BLEND_OP_ADD;
+        VkBlendFactor src_alpha_blend_factor = VK_BLEND_FACTOR_ONE;
+        VkBlendFactor dst_alpha_blend_factor = VK_BLEND_FACTOR_ZERO;
+        VkBlendOp alpha_blend_op = VK_BLEND_OP_ADD;
+        VkColorComponentFlags color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    };
+    std::vector<BlendAttachmentState> color_blend_attachments;
+
+    // Dynamic state
+    std::vector<VkDynamicState> dynamic_states = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    // Push constant ranges (from shader reflection)
+    struct PushConstantRange {
+        VkShaderStageFlags stage_flags;
+        uint32_t offset;
+        uint32_t size;
+    };
+    std::vector<PushConstantRange> push_constant_ranges;
+};
+
+struct ComputePipelineDesc {
+    uint64_t shader_handle;
+    kirbyrecomp::shader::ShaderReflection shader_reflection;
+    std::vector<PipelineDesc::PushConstantRange> push_constant_ranges;
+};
+
+// ============================================================================
 // Resource Objects
 // ============================================================================
 
@@ -254,6 +344,12 @@ struct DescriptorSetResource {
     VkDescriptorSet set = VK_NULL_HANDLE;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSetLayoutBinding> bindings;
+};
+
+struct ShaderModuleResource {
+    VkShaderModule module = VK_NULL_HANDLE;
+    std::vector<uint32_t> spirv_binary;
+    kirbyrecomp::shader::ShaderReflection reflection;
 };
 
 // ============================================================================
@@ -297,12 +393,28 @@ public:
     std::optional<SamplerResource*> get_sampler(uint64_t handle);
     std::optional<const SamplerResource*> get_sampler(uint64_t handle) const;
 
+    // Shader module management
+    uint64_t create_shader_module(const std::vector<uint32_t>& spirv_binary,
+                                  const kirbyrecomp::shader::ShaderReflection& reflection);
+    void destroy_shader_module(uint64_t handle);
+    std::optional<ShaderModuleResource*> get_shader_module(uint64_t handle);
+    std::optional<const ShaderModuleResource*> get_shader_module(uint64_t handle) const;
+
     // Pipeline management
-    uint64_t create_graphics_pipeline(const class PipelineDesc& desc);
-    uint64_t create_compute_pipeline(const class ComputePipelineDesc& desc);
+    uint64_t create_graphics_pipeline(const PipelineDesc& desc);
+    uint64_t create_compute_pipeline(const ComputePipelineDesc& desc);
     void destroy_pipeline(uint64_t handle);
     std::optional<PipelineResource*> get_pipeline(uint64_t handle);
     std::optional<const PipelineResource*> get_pipeline(uint64_t handle) const;
+
+    // Descriptor set layout creation from shader reflection
+    VkDescriptorSetLayout create_descriptor_set_layout(const kirbyrecomp::shader::ShaderReflection& reflection,
+                                                        uint32_t set = 0);
+    std::vector<VkDescriptorSetLayout> create_descriptor_set_layouts(
+        const std::vector<kirbyrecomp::shader::ShaderReflection>& reflections);
+    VkPipelineLayout create_pipeline_layout(
+        const std::vector<VkDescriptorSetLayout>& set_layouts,
+        const std::vector<PipelineDesc::PushConstantRange>& push_constant_ranges);
 
     // Descriptor set management
     uint64_t create_descriptor_pool(const std::vector<VkDescriptorPoolSize>& pool_sizes, uint32_t max_sets);
@@ -356,10 +468,15 @@ private:
     VkPhysicalDeviceMemoryProperties memory_properties_;
     std::string last_error_;
 
+    // Pipeline cache for install-time compilation
+    VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
+    std::string pipeline_cache_path_;
+
     // Resource storage
     std::unordered_map<uint64_t, BufferResource> buffers_;
     std::unordered_map<uint64_t, TextureResource> textures_;
     std::unordered_map<uint64_t, SamplerResource> samplers_;
+    std::unordered_map<uint64_t, ShaderModuleResource> shader_modules_;
     std::unordered_map<uint64_t, PipelineResource> pipelines_;
     std::unordered_map<uint64_t, DescriptorSetResource> descriptor_sets_;
     std::unordered_map<uint64_t, VkDescriptorPool> descriptor_pools_;
