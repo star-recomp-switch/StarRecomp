@@ -100,6 +100,9 @@ add_subdirectory(src/hle)
 # Include shader translation module (Milestone 5)
 add_subdirectory(src/shader)
 
+# Include NVN runtime module (Milestone 6)
+add_subdirectory(src/nvn)
+
 # Generated sources directory
 file(MAKE_DIRECTORY ${KIRBYRECOMP_GENERATED_DIR})
 
