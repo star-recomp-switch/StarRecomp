@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(kirbyrecomp_kfl STATIC
     kfl_nso.cpp
     kfl_save.cpp
+    kfl_profiling.cpp
 )
 
 target_include_directories(kirbyrecomp_kfl PUBLIC
