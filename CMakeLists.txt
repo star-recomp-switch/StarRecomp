@@ -103,6 +103,9 @@ add_subdirectory(src/shader)
 # Include NVN runtime module (Milestone 6)
 add_subdirectory(src/nvn)
 
+# Include KFL (Kirby and the Forgotten Land) module loader (Milestone 8)
+add_subdirectory(src/kfl)
+
 # Generated sources directory
 file(MAKE_DIRECTORY ${KIRBYRECOMP_GENERATED_DIR})
 

@@ -18,6 +18,8 @@ target_include_directories(kirbyrecomp_hle PUBLIC
 target_link_libraries(kirbyrecomp_hle PUBLIC
     sr_common
     kirbyrecomp_shader
+    kirbyrecomp_kfl
+    kirbyrecomp_nvn
     Vulkan::Vulkan
     SDL3::SDL3
     opus::opus
