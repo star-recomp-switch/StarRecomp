@@ -146,7 +146,12 @@
   - Event management: create, destroy, set, reset, wait_event
   - Submit command buffer with full synchronization (wait/signal semaphores, fence)
   - Timeline semaphore submit info support
-- [ ] VMA integration for memory allocation
+- [x] VMA integration for memory allocation
+  - VmaAllocator for automatic memory management
+  - Buffer/Image creation with vmaCreateBuffer/vmaCreateImage
+  - Automatic memory type selection and dedicated allocations
+  - Proper cleanup with vmaDestroyBuffer/vmaDestroyImage
+  - Buffer device address support via VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
 - [ ] FSR 1 + SMAA integration
 
 ### Advanced Features
