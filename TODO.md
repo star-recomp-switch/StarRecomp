@@ -172,7 +172,7 @@
 - [x] `audren:u` Audio Renderer (software mixing - basic impl done with SDL3)
 - [x] `audout:u` Audio Output (SDL3 audio callback - basic impl done)
 - [x] `hwopus:` Opus Decode (libopus - basic impl done)
-- [ ] Buffer event system
+- [x] Buffer event system
 - [ ] Full audio pipeline integration
 - [ ] Audio session management
 - [ ] Proper audio format conversion (S16, F32, etc.)

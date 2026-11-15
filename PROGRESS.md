@@ -181,7 +181,7 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
 - ✅ `audren:u` Audio Renderer (software mixing - basic impl done with SDL3)
 - ✅ `audout:u` Audio Output (SDL3 audio callback - basic impl done)
 - ✅ `hwopus:` Opus Decode (libopus - basic impl done)
-- 🔄 Buffer event system
+- ✅ Buffer event system
 - 🔄 Full audio pipeline integration
 - 🔄 Audio session management
 - 🔄 Proper audio format conversion (S16, F32, etc.)
