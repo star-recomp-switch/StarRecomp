@@ -151,9 +151,14 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
     - Dynamic state application (viewport, scissor)
     - Descriptor write flushing
     - Pipeline state management
-  - 🔄 PSO creation & caching with proper descriptor set layouts
+  - ✅ **PSO creation & caching with proper descriptor set layouts**
+    - PipelineDesc/ComputePipelineDesc with shader reflection data
+    - Descriptor set layout creation from shader reflection resources
+    - Pipeline layout with push constant ranges
+    - Graphics pipeline with vertex input, rasterization, blend, depth/stencil state
+    - Compute pipeline creation
+    - Pipeline cache integration for install-time compilation caching
   - 🔄 Synchronization (fences, semaphores, events, timeline semaphores)
-  - 🔄 Compute pipeline support
   - 🔄 VMA integration for memory allocation
   - 🔄 FSR 1 + SMAA integration
 

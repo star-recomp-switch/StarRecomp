@@ -132,9 +132,14 @@
   - Dynamic state application (viewport, scissor)
   - Descriptor write flushing
   - Pipeline state management
-- [ ] PSO creation & caching with proper descriptor set layouts
+- [x] PSO creation & caching with proper descriptor set layouts
+  - PipelineDesc/ComputePipelineDesc with shader reflection
+  - Descriptor set layout creation from shader reflection
+  - Pipeline layout with push constant ranges
+  - Graphics pipeline with vertex input, rasterization, blend, depth/stencil
+  - Compute pipeline creation
+  - Pipeline cache integration for install-time compilation
 - [ ] Synchronization (fences, semaphores, events, timeline semaphores)
-- [ ] Compute pipeline support
 - [ ] VMA integration for memory allocation
 - [ ] FSR 1 + SMAA integration
 
