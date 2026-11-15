@@ -33,6 +33,9 @@
 // Opus for audio decoding
 #include <opus/opus.h>
 
+// Opus for audio decoding
+#include <opus/opus.h>
+
 // Use std::string for paths to avoid std::filesystem linking issues on mingw64
 namespace fs = std;  // Alias for convenience
 
@@ -694,6 +697,14 @@ public:
     }
 
 private:
+    struct BufferEntry {
+        uint64_t id;
+        size_t offset;
+        size_t size;
+        uint64_t event_handle;  // Kernel event handle
+        bool event_registered = false;
+    };
+
     std::mutex mutex_;
     bool initialized_ = false;
     SDL_AudioDeviceID audio_device_ = 0;
@@ -704,6 +715,13 @@ private:
     std::condition_variable buffer_cv_;
     bool running_ = false;
     float volume_ = 1.0f;
+
+    // Buffer event tracking
+    std::vector<BufferEntry> buffer_entries_;
+    uint64_t next_buffer_id_ = 1;
+    std::mutex buffer_entries_mutex_;
+    uint64_t next_event_handle_ = 1;
+    std::unordered_map<uint64_t, uint64_t> event_to_buffer_;  // event_handle -> buffer_id
 
     void shutdown() {
         if (audio_device_ != 0) {
@@ -718,11 +736,32 @@ private:
         auto* self = static_cast<AudrenService*>(userdata);
         if (!self || !self->running_) return;
 
-        std::lock_guard<std::mutex> lock(self->buffer_mutex_);
+        std::lock_guard<std::mutex> buffer_lock(self->buffer_mutex_);
+        std::lock_guard<std::mutex> entries_lock(self->buffer_entries_mutex_);
+
         if (self->buffer_offset_ < self->audio_buffer_.size()) {
             size_t to_copy = std::min<size_t>(additional_amount, self->audio_buffer_.size() - self->buffer_offset_);
             SDL_PutAudioStreamData(stream, self->audio_buffer_.data() + self->buffer_offset_, static_cast<int>(to_copy));
-            self->buffer_offset_ += to_copy;
+
+            // Update buffer offsets for tracking
+            size_t copied = to_copy;
+            self->buffer_offset_ += copied;
+
+            // Check if any buffer entries have been fully played
+            for (auto it = self->buffer_entries_.begin(); it != self->buffer_entries_.end(); ) {
+                if (it->event_registered && self->buffer_offset_ >= it->offset + it->size) {
+                    // Buffer fully played - signal the event
+                    uint64_t event_handle = it->event_handle;
+                    // Signal the kernel event (would integrate with kernel event system)
+                    // For now, we just track it as "released"
+                    // In a real implementation, this would signal a kernel event
+                    it->event_registered = false;
+                    it->event_handle = 0;
+                    it = self->buffer_entries_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
         }
     }
 
@@ -792,28 +831,113 @@ private:
         if (!initialized_ || !in_data || in_size == 0) return Result::InvalidArgument;
 
         std::lock_guard<std::mutex> lock(buffer_mutex_);
+        std::lock_guard<std::mutex> entries_lock(buffer_entries_mutex_);
+
         const uint8_t* src = static_cast<const uint8_t*>(in_data);
-        audio_buffer_.insert(audio_buffer_.end(), src, src + in_size);
+        size_t current_offset = audio_buffer_.size();
+        audio_buffer_.insert(audio_buffer_.end(), static_cast<const uint8_t*>(in_data),
+                            static_cast<const uint8_t*>(in_data) + in_size);
+
+        // Create buffer entry for tracking
+        BufferEntry entry;
+        entry.id = next_buffer_id_++;
+        entry.offset = current_offset;
+        entry.size = in_size;
+        entry.event_handle = 0;
+        entry.event_registered = false;
+        buffer_entries_.push_back(entry);
+
+        // Return buffer ID to caller
+        if (out_data && out_size >= 8) {
+            *static_cast<uint64_t*>(out_data) = buffer_entries_.back().id;
+        }
+
         buffer_cv_.notify_one();
         return Result::Success;
     }
 
     Result register_buffer_event(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
-        // Event registration would integrate with kernel event system
+        // Input: buffer_id (u64), event_handle (u64) - user provides event handle
+        // Register a kernel event to be signaled when a buffer finishes playing
+        if (!in_data || in_size < 16) return Result::InvalidArgument;
+
+        const uint64_t* params = static_cast<const uint64_t*>(in_data);
+        uint64_t buffer_id = params[0];
+        uint64_t event_handle = params[1];
+
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        auto it = std::find_if(buffer_entries_.begin(), buffer_entries_.end(),
+                               [buffer_id](const BufferEntry& e) { return e.id == buffer_id; });
+
+        if (it == buffer_entries_.end()) {
+            return Result::NotFound;
+        }
+
+        it->event_handle = event_handle;
+        it->event_registered = true;
+        event_to_buffer_[event_handle] = buffer_id;
+
         if (out_data && out_size >= 8) {
-            *static_cast<uint64_t*>(out_data) = 1; // Event handle
+            *static_cast<uint64_t*>(out_data) = 0; // Success
         }
         return Result::Success;
     }
 
     Result unregister_buffer_event(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
+        // Input: event_handle (u64)
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t event_handle = *static_cast<const uint64_t*>(in_data);
+
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        auto it = event_to_buffer_.find(event_handle);
+        if (it == event_to_buffer_.end()) {
+            return Result::NotFound;
+        }
+
+        uint64_t buffer_id = it->second;
+        auto buffer_it = std::find_if(buffer_entries_.begin(), buffer_entries_.end(),
+                                      [buffer_id](const BufferEntry& e) { return e.id == buffer_id; });
+
+        if (buffer_it != buffer_entries_.end()) {
+            buffer_it->event_registered = false;
+            buffer_it->event_handle = 0;
+        }
+
+        event_to_buffer_.erase(it);
         return Result::Success;
     }
 
     Result get_released_buffer(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
-        // Return buffer that has been played
+        // Return the ID of a buffer that has been fully played
+        // This should be called after the event for a buffer has been signaled
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        // Find a buffer that has been fully played (offset >= size) and has an event registered
+        for (auto it = buffer_entries_.begin(); it != buffer_entries_.end(); ++it) {
+            if (it->event_registered && it->offset >= it->size) {
+                uint64_t buffer_id = it->id;
+                uint64_t event_handle = it->event_handle;
+
+                // Remove from event map
+                event_to_buffer_.erase(event_handle);
+
+                // Return buffer ID
+                if (out_data && out_size >= 8) {
+                    *static_cast<uint64_t*>(out_data) = buffer_id;
+                }
+
+                // Remove the buffer entry
+                buffer_entries_.erase(it);
+                return Result::Success;
+            }
+        }
+
+        // No released buffer found
         if (out_data && out_size >= 8) {
-            *static_cast<uint64_t*>(out_data) = 0; // Buffer address
+            *static_cast<uint64_t*>(out_data) = 0;
         }
         return Result::Success;
     }
@@ -884,6 +1008,14 @@ public:
     }
 
 private:
+    struct BufferEntry {
+        uint64_t id;
+        size_t offset;
+        size_t size;
+        uint64_t event_handle;  // Kernel event handle
+        bool event_registered = false;
+    };
+
     std::mutex mutex_;
     bool initialized_ = false;
     SDL_AudioDeviceID audio_device_ = 0;
@@ -893,6 +1025,13 @@ private:
     std::mutex buffer_mutex_;
     bool running_ = false;
     float volume_ = 1.0f;
+
+    // Buffer event tracking
+    std::vector<BufferEntry> buffer_entries_;
+    uint64_t next_buffer_id_ = 1;
+    std::mutex buffer_entries_mutex_;
+    uint64_t next_event_handle_ = 1;
+    std::unordered_map<uint64_t, uint64_t> event_to_buffer_;  // event_handle -> buffer_id
 
     void shutdown() {
         if (audio_device_ != 0) {
@@ -906,11 +1045,32 @@ private:
         auto* self = static_cast<AudoutService*>(userdata);
         if (!self || !self->running_) return;
 
-        std::lock_guard<std::mutex> lock(self->buffer_mutex_);
+        std::lock_guard<std::mutex> buffer_lock(self->buffer_mutex_);
+        std::lock_guard<std::mutex> entries_lock(self->buffer_entries_mutex_);
+
         if (self->buffer_offset_ < self->audio_buffer_.size()) {
             size_t to_copy = std::min<size_t>(additional_amount, self->audio_buffer_.size() - self->buffer_offset_);
             SDL_PutAudioStreamData(stream, self->audio_buffer_.data() + self->buffer_offset_, static_cast<int>(to_copy));
-            self->buffer_offset_ += to_copy;
+
+            // Update buffer offsets for tracking
+            size_t copied = to_copy;
+            self->buffer_offset_ += copied;
+
+            // Check if any buffer entries have been fully played
+            for (auto it = self->buffer_entries_.begin(); it != self->buffer_entries_.end(); ) {
+                if (it->event_registered && self->buffer_offset_ >= it->offset + it->size) {
+                    // Buffer fully played - signal the event
+                    uint64_t event_handle = it->event_handle;
+                    // Signal the kernel event (would integrate with kernel event system)
+                    // For now, we just track it as "released"
+                    // In a real implementation, this would signal a kernel event
+                    it->event_registered = false;
+                    it->event_handle = 0;
+                    it = self->buffer_entries_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
         }
     }
 
@@ -968,19 +1128,113 @@ private:
         if (!initialized_ || !in_data || in_size == 0) return Result::InvalidArgument;
 
         std::lock_guard<std::mutex> lock(buffer_mutex_);
+        std::lock_guard<std::mutex> entries_lock(buffer_entries_mutex_);
+
         const uint8_t* src = static_cast<const uint8_t*>(in_data);
-        audio_buffer_.insert(audio_buffer_.end(), src, src + in_size);
+        size_t current_offset = audio_buffer_.size();
+        audio_buffer_.insert(audio_buffer_.end(), static_cast<const uint8_t*>(in_data),
+                            static_cast<const uint8_t*>(in_data) + in_size);
+
+        // Create buffer entry for tracking
+        BufferEntry entry;
+        entry.id = next_buffer_id_++;
+        entry.offset = current_offset;
+        entry.size = in_size;
+        entry.event_handle = 0;
+        entry.event_registered = false;
+        buffer_entries_.push_back(entry);
+
+        // Return buffer ID to caller
+        if (out_data && out_size >= 8) {
+            *static_cast<uint64_t*>(out_data) = buffer_entries_.back().id;
+        }
+
         return Result::Success;
     }
 
     Result register_buffer_event(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
+        // Input: buffer_id (u64), event_handle (u64) - user provides event handle
+        // Register a kernel event to be signaled when a buffer finishes playing
+        if (!in_data || in_size < 16) return Result::InvalidArgument;
+
+        const uint64_t* params = static_cast<const uint64_t*>(in_data);
+        uint64_t buffer_id = params[0];
+        uint64_t event_handle = params[1];
+
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        auto it = std::find_if(buffer_entries_.begin(), buffer_entries_.end(),
+                               [buffer_id](const BufferEntry& e) { return e.id == buffer_id; });
+
+        if (it == buffer_entries_.end()) {
+            return Result::NotFound;
+        }
+
+        it->event_handle = event_handle;
+        it->event_registered = true;
+        event_to_buffer_[event_handle] = buffer_id;
+
         if (out_data && out_size >= 8) {
-            *static_cast<uint64_t*>(out_data) = 1;
+            *static_cast<uint64_t*>(out_data) = 0; // Success
         }
         return Result::Success;
     }
 
     Result unregister_buffer_event(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
+        // Input: event_handle (u64)
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t event_handle = *static_cast<const uint64_t*>(in_data);
+
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        auto it = event_to_buffer_.find(event_handle);
+        if (it == event_to_buffer_.end()) {
+            return Result::NotFound;
+        }
+
+        uint64_t buffer_id = it->second;
+        auto buffer_it = std::find_if(buffer_entries_.begin(), buffer_entries_.end(),
+                                      [buffer_id](const BufferEntry& e) { return e.id == buffer_id; });
+
+        if (buffer_it != buffer_entries_.end()) {
+            buffer_it->event_registered = false;
+            buffer_it->event_handle = 0;
+        }
+
+        event_to_buffer_.erase(it);
+        return Result::Success;
+    }
+
+    Result get_released_buffer(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
+        // Return the ID of a buffer that has been fully played
+        // This should be called after the event for a buffer has been signaled
+        std::lock_guard<std::mutex> lock(buffer_entries_mutex_);
+
+        // Find a buffer that has been fully played (offset >= size) and has an event registered
+        for (auto it = buffer_entries_.begin(); it != buffer_entries_.end(); ++it) {
+            if (it->event_registered && it->offset >= it->size) {
+                uint64_t buffer_id = it->id;
+                uint64_t event_handle = it->event_handle;
+
+                // Remove from event map
+                event_to_buffer_.erase(event_handle);
+
+                // Return buffer ID
+                if (out_data && out_size >= 8) {
+                    *static_cast<uint64_t*>(out_data) = buffer_id;
+                }
+
+                // Remove the buffer entry
+                buffer_entries_.erase(it);
+                return Result::Success;
+            }
+        }
+
+        // No released buffer found
+        if (out_data && out_size >= 8) {
+            *static_cast<uint64_t*>(out_data) = 0;
+        }
         return Result::Success;
     }
 

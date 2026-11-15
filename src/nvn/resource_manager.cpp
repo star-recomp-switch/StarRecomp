@@ -1283,45 +1283,6 @@ void ResourceManager::reset_command_pool(VkCommandPool pool) {
 }
 
 // ============================================================================
-// Synchronization
-// ============================================================================
-
-VkFence ResourceManager::create_fence(bool signaled) {
-    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    if (signaled) fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    VkFence fence;
-    vkCreateFence(device_, &fence_info, nullptr, &fence);
-    return fence;
-}
-
-VkSemaphore ResourceManager::create_semaphore() {
-    VkSemaphoreCreateInfo sem_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    VkSemaphore semaphore;
-    vkCreateSemaphore(device_, &sem_info, nullptr, &semaphore);
-    return semaphore;
-}
-
-VkEvent ResourceManager::create_event() {
-    VkEventCreateInfo event_info{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
-    VkEvent event;
-    vkCreateEvent(device_, &event_info, nullptr, &event);
-    return event;
-}
-
-void ResourceManager::destroy_fence(VkFence fence) {
-    if (fence != VK_NULL_HANDLE) vkDestroyFence(device_, fence, nullptr);
-}
-
-void ResourceManager::destroy_semaphore(VkSemaphore semaphore) {
-    if (semaphore != VK_NULL_HANDLE) vkDestroySemaphore(device_, semaphore, nullptr);
-}
-
-void ResourceManager::destroy_event(VkEvent event) {
-    if (event != VK_NULL_HANDLE) vkDestroyEvent(device_, event, nullptr);
-}
-
-// ============================================================================
 // Memory Utilities
 // ============================================================================
 
@@ -1746,14 +1707,12 @@ VkResult ResourceManager::reset_event(uint64_t handle) {
 VkResult ResourceManager::wait_event(VkCommandBuffer cmd_buffer, uint64_t handle, VkPipelineStageFlags stage_mask) {
     auto opt = get_event(handle);
     if (!opt || !*opt) return VK_ERROR_UNKNOWN;
-    // vkCmdWaitEvents signature:
-    // commandBuffer, eventCount, pEvents, pSrcStageMasks, pDstStageMasks,
+    // vkCmdWaitEvents signature (Vulkan 1.3+):
+    // commandBuffer, eventCount, pEvents, srcStageMask, dstStageMask,
     // memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers,
     // imageMemoryBarrierCount, pImageMemoryBarriers
-    // pSrcStageMasks and pDstStageMasks are arrays of VkPipelineStageFlags
-    VkPipelineStageFlags src_stage = stage_mask;
-    VkPipelineStageFlags dst_stage = stage_mask;
-    vkCmdWaitEvents(cmd_buffer, 1, &(*opt)->event, &src_stage, &dst_stage, 0, nullptr, 0, nullptr, 0, nullptr);
+    // srcStageMask and dstStageMask are single VkPipelineStageFlags values (not arrays)
+    vkCmdWaitEvents(cmd_buffer, 1, &(*opt)->event, stage_mask, stage_mask, 0, nullptr, 0, nullptr, 0, nullptr);
     return VK_SUCCESS;
 }
 
