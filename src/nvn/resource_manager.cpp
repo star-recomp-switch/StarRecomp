@@ -1349,4 +1349,411 @@ VkImageAspectFlags ResourceManager::get_format_aspect(VkFormat format) const {
     }
 }
 
+// ============================================================================
+// Synchronization Implementation
+// ============================================================================
+
+// Fence Management
+uint64_t ResourceManager::create_fence(bool signaled) {
+    uint64_t handle = allocate_handle();
+    FenceResource resource;
+
+    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    if (signaled) {
+        fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        resource.signaled = true;
+    }
+
+    VkResult result = vkCreateFence(device_, &fence_info, nullptr, &resource.fence);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateFence failed: " + std::to_string(result);
+        return 0;
+    }
+
+    fences_[handle] = std::move(resource);
+    return handle;
+}
+
+void ResourceManager::destroy_fence(uint64_t handle) {
+    auto it = fences_.find(handle);
+    if (it == fences_.end()) return;
+
+    if (it->second.fence != VK_NULL_HANDLE) {
+        vkDestroyFence(device_, it->second.fence, nullptr);
+    }
+    fences_.erase(it);
+}
+
+std::optional<FenceResource*> ResourceManager::get_fence(uint64_t handle) {
+    auto it = fences_.find(handle);
+    if (it == fences_.end()) return std::nullopt;
+    return &it->second;
+}
+
+std::optional<const FenceResource*> ResourceManager::get_fence(uint64_t handle) const {
+    auto it = fences_.find(handle);
+    if (it == fences_.end()) return std::nullopt;
+    return &it->second;
+}
+
+VkResult ResourceManager::wait_fence(uint64_t handle, uint64_t timeout_ns) {
+    auto opt = get_fence(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+
+    VkFence fence = (*opt)->fence;
+    return vkWaitForFences(device_, 1, &fence, VK_TRUE, timeout_ns);
+}
+
+VkResult ResourceManager::reset_fence(uint64_t handle) {
+    auto opt = get_fence(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+
+    VkFence fence = (*opt)->fence;
+    VkResult result = vkResetFences(device_, 1, &fence);
+    if (result == VK_SUCCESS) {
+        (*opt)->signaled = false;
+    }
+    return result;
+}
+
+VkResult ResourceManager::wait_fences(const std::vector<uint64_t>& handles, bool wait_all, uint64_t timeout_ns) {
+    if (handles.empty()) return VK_SUCCESS;
+
+    std::vector<VkFence> fences;
+    fences.reserve(handles.size());
+
+    for (uint64_t handle : handles) {
+        auto opt = get_fence(handle);
+        if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+        fences.push_back((*opt)->fence);
+    }
+
+    return vkWaitForFences(device_, static_cast<uint32_t>(fences.size()), fences.data(),
+                           wait_all ? VK_TRUE : VK_FALSE, timeout_ns);
+}
+
+// Semaphore Management
+uint64_t ResourceManager::create_semaphore(bool is_timeline, uint64_t initial_value) {
+    uint64_t handle = allocate_handle();
+    SemaphoreResource resource;
+    resource.is_timeline = is_timeline;
+    resource.current_value = initial_value;
+
+    if (is_timeline) {
+        VkSemaphoreTypeCreateInfo type_info{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        type_info.initialValue = initial_value;
+
+        VkSemaphoreCreateInfo sem_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        sem_info.pNext = &type_info;
+
+        VkResult result = vkCreateSemaphore(device_, &sem_info, nullptr, &resource.semaphore);
+        if (result != VK_SUCCESS) {
+            last_error_ = "vkCreateSemaphore (timeline) failed: " + std::to_string(result);
+            return 0;
+        }
+    } else {
+        VkSemaphoreCreateInfo sem_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        VkResult result = vkCreateSemaphore(device_, &sem_info, nullptr, &resource.semaphore);
+        if (result != VK_SUCCESS) {
+            last_error_ = "vkCreateSemaphore (binary) failed: " + std::to_string(result);
+            return 0;
+        }
+    }
+
+    semaphores_[handle] = std::move(resource);
+    return handle;
+}
+
+void ResourceManager::destroy_semaphore(uint64_t handle) {
+    auto it = semaphores_.find(handle);
+    if (it == semaphores_.end()) return;
+
+    if (it->second.semaphore != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device_, it->second.semaphore, nullptr);
+    }
+    semaphores_.erase(it);
+}
+
+std::optional<SemaphoreResource*> ResourceManager::get_semaphore(uint64_t handle) {
+    auto it = semaphores_.find(handle);
+    if (it == semaphores_.end()) return std::nullopt;
+    return &it->second;
+}
+
+std::optional<const SemaphoreResource*> ResourceManager::get_semaphore(uint64_t handle) const {
+    auto it = semaphores_.find(handle);
+    if (it == semaphores_.end()) return std::nullopt;
+    return &it->second;
+}
+
+VkResult ResourceManager::signal_semaphore(uint64_t handle, uint64_t value) {
+    auto opt = get_semaphore(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+
+    SemaphoreResource& resource = *opt;
+    if (!resource.is_timeline) {
+        // Binary semaphore - just signal
+        VkSemaphoreSignalInfo signal_info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+        signal_info.semaphore = resource.semaphore;
+        signal_info.value = 0;
+        return vkSignalSemaphore(device_, &signal_info);
+    }
+
+    // Timeline semaphore - signal with value
+    VkSemaphoreSignalInfo signal_info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+    signal_info.semaphore = resource.semaphore;
+    signal_info.value = value;
+    VkResult result = vkSignalSemaphore(device_, &signal_info);
+    if (result == VK_SUCCESS) {
+        resource.current_value = value;
+    }
+    return result;
+}
+
+VkResult ResourceManager::wait_semaphore(uint64_t handle, uint64_t value, uint64_t timeout_ns) {
+    auto opt = get_semaphore(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+
+    SemaphoreResource& resource = *opt;
+    if (!resource.is_timeline) {
+        // Binary semaphore - wait with zero value
+        VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+        wait_info.semaphoreCount = 1;
+        wait_info.pSemaphores = &resource.semaphore;
+        wait_info.pValues = nullptr;
+        return vkWaitSemaphores(device_, &wait_info, timeout_ns);
+    }
+
+    // Timeline semaphore
+    VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+    wait_info.semaphoreCount = 1;
+    wait_info.pSemaphores = &resource.semaphore;
+    wait_info.pValues = &value;
+    VkResult result = vkWaitSemaphores(device_, &wait_info, timeout_ns);
+    if (result == VK_SUCCESS) {
+        resource.current_value = value;
+    }
+    return result;
+}
+
+// Timeline Semaphore Pool
+uint64_t ResourceManager::create_timeline_semaphore_pool(uint32_t count) {
+    uint64_t handle = allocate_handle();
+    TimelineSemaphorePool pool;
+    pool.semaphores.reserve(count);
+    pool.values.reserve(count);
+
+    for (uint32_t i = 0; i < count; ++i) {
+        VkSemaphoreTypeCreateInfo type_info{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        type_info.initialValue = 0;
+
+        VkSemaphoreCreateInfo sem_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        sem_info.pNext = &type_info;
+
+        VkSemaphore semaphore;
+        VkResult result = vkCreateSemaphore(device_, &sem_info, nullptr, &semaphore);
+        if (result != VK_SUCCESS) {
+            // Clean up already created
+            for (auto s : pool.semaphores) {
+                vkDestroySemaphore(device_, s, nullptr);
+            }
+            last_error_ = "vkCreateSemaphore (timeline pool) failed: " + std::to_string(result);
+            return 0;
+        }
+        pool.semaphores.push_back(semaphore);
+        pool.values.push_back(0);
+    }
+
+    timeline_semaphore_pools_[handle] = std::move(pool);
+    return handle;
+}
+
+void ResourceManager::destroy_timeline_semaphore_pool(uint64_t handle) {
+    auto it = timeline_semaphore_pools_.find(handle);
+    if (it == timeline_semaphore_pools_.end()) return;
+
+    for (auto semaphore : it->second.semaphores) {
+        if (semaphore != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device_, semaphore, nullptr);
+        }
+    }
+    timeline_semaphore_pools_.erase(it);
+}
+
+uint64_t ResourceManager::acquire_timeline_semaphore(uint64_t pool_handle, uint64_t initial_value) {
+    auto it = timeline_semaphore_pools_.find(pool_handle);
+    if (it == timeline_semaphore_pools_.end()) return 0;
+
+    TimelineSemaphorePool& pool = it->second;
+    if (pool.next_index >= pool.semaphores.size()) {
+        last_error_ = "Timeline semaphore pool exhausted";
+        return 0;
+    }
+
+    uint64_t semaphore_handle = allocate_handle();
+    SemaphoreResource resource;
+    resource.semaphore = pool.semaphores[pool.next_index];
+    resource.is_timeline = true;
+    resource.current_value = initial_value;
+    pool.values[pool.next_index] = initial_value;
+    pool.next_index++;
+
+    // Signal to initial value if needed
+    if (initial_value > 0) {
+        VkSemaphoreSignalInfo signal_info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+        signal_info.semaphore = resource.semaphore;
+        signal_info.value = initial_value;
+        vkSignalSemaphore(device_, &signal_info);
+    }
+
+    semaphores_[semaphore_handle] = std::move(resource);
+    return semaphore_handle;
+}
+
+void ResourceManager::release_timeline_semaphore(uint64_t pool_handle, uint64_t semaphore_handle) {
+    auto pool_it = timeline_semaphore_pools_.find(pool_handle);
+    if (pool_it == timeline_semaphore_pools_.end()) return;
+
+    // Note: The semaphore is still managed by the main semaphores_ map
+    // It will be destroyed when the pool is destroyed or when destroy_semaphore is called
+    // For now, just remove from pool tracking
+    semaphores_.erase(semaphore_handle);
+    // Note: The actual semaphore remains in pool.semaphores for cleanup
+}
+
+// Event Management
+uint64_t ResourceManager::create_event() {
+    uint64_t handle = allocate_handle();
+    EventResource resource;
+
+    VkEventCreateInfo event_info{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
+    VkResult result = vkCreateEvent(device_, &event_info, nullptr, &resource.event);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateEvent failed: " + std::to_string(result);
+        return 0;
+    }
+
+    events_[handle] = std::move(resource);
+    return handle;
+}
+
+void ResourceManager::destroy_event(uint64_t handle) {
+    auto it = events_.find(handle);
+    if (it == events_.end()) return;
+
+    if (it->second.event != VK_NULL_HANDLE) {
+        vkDestroyEvent(device_, it->second.event, nullptr);
+    }
+    events_.erase(it);
+}
+
+std::optional<EventResource*> ResourceManager::get_event(uint64_t handle) {
+    auto it = events_.find(handle);
+    if (it == events_.end()) return std::nullopt;
+    return &it->second;
+}
+
+std::optional<const EventResource*> ResourceManager::get_event(uint64_t handle) const {
+    auto it = events_.find(handle);
+    if (it == events_.end()) return std::nullopt;
+    return &it->second;
+}
+
+VkResult ResourceManager::set_event(uint64_t handle) {
+    auto opt = get_event(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+    return vkSetEvent(device_, (*opt)->event);
+}
+
+VkResult ResourceManager::reset_event(uint64_t handle) {
+    auto opt = get_event(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+    return vkResetEvent(device_, (*opt)->event);
+}
+
+VkResult ResourceManager::wait_event(uint64_t handle, VkPipelineStageFlags stage_mask) {
+    auto opt = get_event(handle);
+    if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+    return vkCmdWaitEvents(device_, 0, nullptr, nullptr, 1, &(*opt)->event,
+                           stage_mask, stage_mask, 0, nullptr, 0, nullptr);
+}
+
+// Submit with synchronization
+VkResult ResourceManager::submit_command_buffer(VkCommandBuffer cmd_buffer,
+                                                const std::vector<uint64_t>& wait_semaphores,
+                                                const std::vector<uint64_t>& wait_values,
+                                                const std::vector<VkPipelineStageFlags>& wait_stages,
+                                                const std::vector<uint64_t>& signal_semaphores,
+                                                const std::vector<uint64_t>& signal_values,
+                                                uint64_t fence_handle) {
+    // Convert wait semaphores
+    std::vector<VkSemaphore> wait_semaphore_handles;
+    std::vector<uint64_t> wait_semaphore_values;
+    wait_semaphore_handles.reserve(wait_semaphores.size());
+    wait_semaphore_values.reserve(wait_semaphores.size());
+
+    for (size_t i = 0; i < wait_semaphores.size(); ++i) {
+        auto opt = get_semaphore(wait_semaphores[i]);
+        if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+        wait_semaphore_handles.push_back((*opt)->semaphore);
+        wait_semaphore_values.push_back(wait_values.size() > i ? wait_values[i] : 0);
+    }
+
+    // Convert signal semaphores
+    std::vector<VkSemaphore> signal_semaphore_handles;
+    std::vector<uint64_t> signal_semaphore_values;
+    signal_semaphore_handles.reserve(signal_semaphores.size());
+    signal_semaphore_values.reserve(signal_semaphores.size());
+
+    for (size_t i = 0; i < signal_semaphores.size(); ++i) {
+        auto opt = get_semaphore(signal_semaphores[i]);
+        if (!opt || !*opt) return VK_ERROR_UNKNOWN;
+        signal_semaphore_handles.push_back((*opt)->semaphore);
+        signal_semaphore_values.push_back(signal_values.size() > i ? signal_values[i] : 0);
+    }
+
+    // Build submit info
+    VkSubmitInfo submit_info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit_info.waitSemaphoreCount = static_cast<uint32_t>(wait_semaphore_handles.size());
+    submit_info.pWaitSemaphores = wait_semaphore_handles.data();
+    submit_info.pWaitDstStageMask = wait_stages.data();
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmd_buffer;
+    submit_info.signalSemaphoreCount = static_cast<uint32_t>(signal_semaphore_handles.size());
+    submit_info.pSignalSemaphores = signal_semaphore_handles.data();
+
+    // Timeline semaphore submit info
+    VkTimelineSemaphoreSubmitInfo timeline_info{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+    bool has_timeline = false;
+    for (auto& s : semaphores_) {
+        if (s.second.is_timeline) {
+            has_timeline = true;
+            break;
+        }
+    }
+
+    if (has_timeline || !wait_semaphore_values.empty() || !signal_semaphore_values.empty()) {
+        timeline_info.waitSemaphoreValueCount = static_cast<uint32_t>(wait_semaphore_values.size());
+        timeline_info.pWaitSemaphoreValues = wait_semaphore_values.data();
+        timeline_info.signalSemaphoreValueCount = static_cast<uint32_t>(signal_semaphore_values.size());
+        timeline_info.pSignalSemaphoreValues = signal_semaphore_values.data();
+        submit_info.pNext = &timeline_info;
+    }
+
+    // Fence
+    VkFence fence = VK_NULL_HANDLE;
+    if (fence_handle != 0) {
+        auto opt = get_fence(fence_handle);
+        if (opt && *opt) {
+            fence = (*opt)->fence;
+        }
+    }
+
+    // Submit
+    VkQueue queue = graphics_queue_; // Simplified - would use proper queue
+    return vkQueueSubmit(queue, 1, &submit_info, fence);
+}
+
 } // namespace kirbyrecomp::nvn

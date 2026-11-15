@@ -353,6 +353,32 @@ struct ShaderModuleResource {
 };
 
 // ============================================================================
+// Synchronization Primitives
+// ============================================================================
+
+struct FenceResource {
+    VkFence fence = VK_NULL_HANDLE;
+    bool signaled = false;
+};
+
+struct SemaphoreResource {
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+    bool is_timeline = false;
+    uint64_t current_value = 0;
+};
+
+struct TimelineSemaphorePool {
+    std::vector<VkSemaphore> semaphores;
+    std::vector<uint64_t> values;
+    uint32_t next_index = 0;
+};
+
+struct EventResource {
+    VkEvent event = VK_NULL_HANDLE;
+    bool set = false;
+};
+
+// ============================================================================
 // Resource Manager
 // ============================================================================
 
@@ -434,13 +460,46 @@ public:
     void free_command_buffers(VkCommandPool pool, const std::vector<VkCommandBuffer>& buffers);
     void reset_command_pool(VkCommandPool pool);
 
-    // Synchronization
-    VkFence create_fence(bool signaled = false);
-    VkSemaphore create_semaphore();
-    VkEvent create_event();
-    void destroy_fence(VkFence fence);
-    void destroy_semaphore(VkSemaphore semaphore);
-    void destroy_event(VkEvent event);
+    // Synchronization - Fence Management
+    uint64_t create_fence(bool signaled = false);
+    void destroy_fence(uint64_t handle);
+    std::optional<FenceResource*> get_fence(uint64_t handle);
+    std::optional<const FenceResource*> get_fence(uint64_t handle) const;
+    VkResult wait_fence(uint64_t handle, uint64_t timeout_ns = UINT64_MAX);
+    VkResult reset_fence(uint64_t handle);
+    VkResult wait_fences(const std::vector<uint64_t>& handles, bool wait_all, uint64_t timeout_ns = UINT64_MAX);
+
+    // Synchronization - Semaphore Management
+    uint64_t create_semaphore(bool is_timeline = false, uint64_t initial_value = 0);
+    void destroy_semaphore(uint64_t handle);
+    std::optional<SemaphoreResource*> get_semaphore(uint64_t handle);
+    std::optional<const SemaphoreResource*> get_semaphore(uint64_t handle) const;
+    VkResult signal_semaphore(uint64_t handle, uint64_t value = 0);
+    VkResult wait_semaphore(uint64_t handle, uint64_t value, uint64_t timeout_ns = UINT64_MAX);
+
+    // Synchronization - Timeline Semaphore Pool
+    uint64_t create_timeline_semaphore_pool(uint32_t count);
+    void destroy_timeline_semaphore_pool(uint64_t handle);
+    uint64_t acquire_timeline_semaphore(uint64_t pool_handle, uint64_t initial_value = 0);
+    void release_timeline_semaphore(uint64_t pool_handle, uint64_t semaphore_handle);
+
+    // Synchronization - Event Management
+    uint64_t create_event();
+    void destroy_event(uint64_t handle);
+    std::optional<EventResource*> get_event(uint64_t handle);
+    std::optional<const EventResource*> get_event(uint64_t handle) const;
+    VkResult set_event(uint64_t handle);
+    VkResult reset_event(uint64_t handle);
+    VkResult wait_event(uint64_t handle, VkPipelineStageFlags stage_mask);
+
+    // Synchronization - Submit with synchronization
+    VkResult submit_command_buffer(VkCommandBuffer cmd_buffer,
+                                   const std::vector<uint64_t>& wait_semaphores,
+                                   const std::vector<uint64_t>& wait_values,
+                                   const std::vector<VkPipelineStageFlags>& wait_stages,
+                                   const std::vector<uint64_t>& signal_semaphores,
+                                   const std::vector<uint64_t>& signal_values,
+                                   uint64_t fence_handle = 0);
 
     // Memory utilities
     uint32_t find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
@@ -481,6 +540,12 @@ private:
     std::unordered_map<uint64_t, DescriptorSetResource> descriptor_sets_;
     std::unordered_map<uint64_t, VkDescriptorPool> descriptor_pools_;
     std::unordered_map<uint64_t, VkCommandPool> command_pools_;
+
+    // Synchronization resources
+    std::unordered_map<uint64_t, FenceResource> fences_;
+    std::unordered_map<uint64_t, SemaphoreResource> semaphores_;
+    std::unordered_map<uint64_t, TimelineSemaphorePool> timeline_semaphore_pools_;
+    std::unordered_map<uint64_t, EventResource> events_;
 
     uint64_t next_handle_ = 1;
 
