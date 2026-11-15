@@ -180,13 +180,13 @@
 
 ---
 
-## 📋 PLANNED: Milestone 8 - Kirby Forgotten Land Specific
+## 🔄 IN PROGRESS: Milestone 8 - Kirby Forgotten Land Specific
 
-- [ ] Parse KFL ExeFS (identify all NSO modules)
-- [ ] Handle larger code size (more modules than SKC)
-- [ ] Game-specific NVN commands
-- [ ] Color LUT handling fix
-- [ ] Depth clamp implementation
+- [x] Parse KFL ExeFS (identify all NSO modules)
+- [x] Handle larger code size (more modules than SKC)
+- [x] Game-specific NVN commands
+- [x] Color LUT handling fix
+- [x] Depth clamp implementation
 - [ ] Save data support (DISF/DPFS, AES-CMAC)
 - [ ] Performance profiling & optimization
 - [ ] 120 FPS mode implementation

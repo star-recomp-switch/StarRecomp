@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # KFL runtime library
 add_library(kirbyrecomp_kfl STATIC
     kfl_nso.cpp
+    kfl_save.cpp
 )
 
 target_include_directories(kirbyrecomp_kfl PUBLIC
@@ -42,5 +43,6 @@ target_compile_options(kirbyrecomp_kfl PRIVATE
 # Install headers
 install(FILES
     ${CMAKE_SOURCE_DIR}/include/kirbyrecomp/kfl/kfl_nso.h
+    ${CMAKE_SOURCE_DIR}/include/kirbyrecomp/kfl/kfl_save.h
     DESTINATION include/kirbyrecomp/kfl
 )

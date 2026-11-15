@@ -187,6 +187,17 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
 - ✅ Proper audio format conversion (S16, F32, etc.)
 - ✅ Audio device enumeration
 
+### 🔄 Milestone 8: Kirby Forgotten Land Specific - IN PROGRESS
+- ✅ KFL ExeFS parsing (identify all NSO modules)
+- ✅ KFL NSO module loading with 10 module types
+- ✅ Game-specific NVN commands (KflNvnCommandHandler)
+- ✅ Color LUT handling fix
+- ✅ Depth clamp implementation
+- 🔄 Save data support (DISF/DPFS, AES-CMAC)
+- 🔄 Performance profiling & optimization
+- 🔄 120 FPS mode implementation
+- 🔄 Full playthrough validation
+
 ---
 
 ## Known Limitations / Technical Debt
