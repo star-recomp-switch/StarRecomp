@@ -201,7 +201,19 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Save encryption (XOR-based for now)
   - Save metadata tracking (playtime, completion, world/stage)
   - Save listing and verification
-- 🔄 Performance profiling & optimization
+- ✅ Performance profiling & optimization
+  - Profiler class with frame timing, event tracking, and statistics
+  - Scoped event tracking with RAII
+  - Frame timing and statistics (FPS, frame time, CPU/GPU time)
+  - Event tracking with categories (CPU, GPU, Audio, etc.)
+  - Session statistics tracking
+  - JSON and Chrome trace export formats
+  - Chrome trace format export for visualization
+  - Memory tracking (allocations, peak usage)
+  - GPU timing support
+  - Frame rate limiting
+  - JSON and Chrome trace format export
+  - Scoped event macros for easy instrumentation
 - 🔄 120 FPS mode implementation
 - 🔄 Full playthrough validation
 

@@ -188,7 +188,7 @@
 - [x] Color LUT handling fix
 - [x] Depth clamp implementation
 - [x] Save data support (DISF/DPFS, AES-CMAC)
-- [ ] Performance profiling & optimization
+- [x] Performance profiling & optimization
 - [ ] 120 FPS mode implementation
 - [ ] Full playthrough validation
 
