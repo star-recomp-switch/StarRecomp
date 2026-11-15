@@ -1333,9 +1333,325 @@ private:
     std::unordered_map<uint64_t, VkPipeline> pipelines_;
     std::unordered_map<uint64_t, VkPipelineLayout> pipeline_layouts_;
 
+    // Pipeline variants for common state combinations
+    struct PipelineVariantKey {
+        uint64_t program_id;
+        uint32_t blend_state;
+        uint32_t depth_stencil_state;
+        uint32_t rasterization_state;
+        uint32_t multisample_state;
+
+        bool operator==(const PipelineVariantKey& other) const {
+            return program_id == other.program_id &&
+                   blend_state == other.blend_state &&
+                   depth_stencil_state == other.depth_stencil_state &&
+                   rasterization_state == other.rasterization_state &&
+                   multisample_state == other.multisample_state;
+        }
+    };
+
+    struct PipelineVariantKeyHash {
+        size_t operator()(const PipelineVariantKey& key) const noexcept {
+            size_t h = std::hash<uint64_t>{}(key.program_id);
+            h ^= std::hash<uint32_t>{}(key.blend_state) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<uint32_t>{}(key.depth_stencil_state) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<uint32_t>{}(key.rasterization_state) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<uint32_t>{}(key.multisample_state) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+
+    std::unordered_map<PipelineVariantKey, VkPipeline, PipelineVariantKeyHash> pipeline_variants_;
+
     // Pipeline cache for install-time compilation
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
     std::string pipeline_cache_path_;
+
+    // Blend state presets
+    enum BlendState : uint32_t {
+        BLEND_OPAQUE = 0,
+        BLEND_ALPHA = 1,
+        BLEND_ADDITIVE = 2,
+        BLEND_PREMULTIPLIED_ALPHA = 3,
+        BLEND_MULTIPLY = 4,
+        BLEND_COUNT = 5
+    };
+
+    // Depth/stencil state presets
+    enum DepthStencilState : uint32_t {
+        DEPTH_NONE = 0,
+        DEPTH_READ_ONLY = 1,
+        DEPTH_READ_WRITE = 2,
+        DEPTH_STENCIL_READ_WRITE = 3,
+        DEPTH_STENCIL_READ_ONLY = 4,
+        DEPTH_STENCIL_COUNT = 5
+    };
+
+    // Rasterization state presets
+    enum RasterizationState : uint32_t {
+        RASTER_FILL_CULL_BACK = 0,
+        RASTER_FILL_CULL_FRONT = 1,
+        RASTER_FILL_CULL_NONE = 2,
+        RASTER_WIREFRAME_CULL_BACK = 3,
+        RASTER_WIREFRAME_CULL_NONE = 4,
+        RASTER_COUNT = 5
+    };
+
+    // Multisample state presets
+    enum MultisampleState : uint32_t {
+        MSAA_1X = 0,
+        MSAA_2X = 1,
+        MSAA_4X = 2,
+        MSAA_8X = 3,
+        MSAA_COUNT = 4
+    };
+
+    // Prepare pipeline variants for a program
+    void prepare_pipeline_variants(uint64_t program_id) {
+        if (pipeline_cache_ == VK_NULL_HANDLE) return;
+
+        auto program_it = programs_.find(program_id);
+        if (program_it == programs_.end()) return;
+
+        const auto& shader_ids = program_it->second;
+
+        // Collect shader stages
+        std::vector<VkPipelineShaderStageCreateInfo> stages;
+        stages.reserve(shader_ids.size());
+
+        for (uint64_t shader_id : shader_ids) {
+            auto shader_it = shaders_.find(shader_id);
+            auto refl_it = shader_reflections_.find(shader_id);
+            if (shader_it == shaders_.end() || refl_it == shader_reflections_.end()) continue;
+
+            VkPipelineShaderStageCreateInfo stage_info{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+            stage_info.module = shader_it->second;
+            stage_info.pName = "main";
+
+            switch (refl_it->second.stage) {
+                case kirbyrecomp::shader::NvnShaderStage::Vertex:
+                    stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::TessControl:
+                    stage_info.stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::TessEval:
+                    stage_info.stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Geometry:
+                    stage_info.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Fragment:
+                    stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+                    break;
+                case kirbyrecomp::shader::NvnShaderStage::Compute:
+                    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+                    break;
+                default:
+                    stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+                    break;
+            }
+            stages.push_back(stage_info);
+        }
+
+        if (stages.empty()) return;
+
+        // Check if compute pipeline
+        bool has_compute = false;
+        for (const auto& stage : stages) {
+            if (stage.stage == VK_SHADER_STAGE_COMPUTE_BIT) {
+                has_compute = true;
+                break;
+            }
+        }
+
+        if (has_compute) {
+            // Compute pipelines don't have graphics state variants
+            return;
+        }
+
+        // Get pipeline layout
+        auto layout_it = pipeline_layouts_.find(program_id);
+        if (layout_it == pipeline_layouts_.end()) return;
+        VkPipelineLayout pipeline_layout = layout_it->second;
+
+        // Pre-generate common variant combinations
+        // We'll create a subset of the most common combinations to avoid explosion
+        const std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>> common_variants = {
+            // (blend, depth_stencil, rasterization, multisample)
+            {BLEND_OPAQUE, DEPTH_READ_WRITE, RASTER_FILL_CULL_BACK, MSAA_1X},
+            {BLEND_OPAQUE, DEPTH_READ_WRITE, RASTER_FILL_CULL_BACK, MSAA_4X},
+            {BLEND_ALPHA, DEPTH_READ_ONLY, RASTER_FILL_CULL_BACK, MSAA_1X},
+            {BLEND_ALPHA, DEPTH_READ_ONLY, RASTER_FILL_CULL_BACK, MSAA_4X},
+            {BLEND_ADDITIVE, DEPTH_READ_ONLY, RASTER_FILL_CULL_NONE, MSAA_1X},
+            {BLEND_PREMULTIPLIED_ALPHA, DEPTH_READ_ONLY, RASTER_FILL_CULL_BACK, MSAA_1X},
+            {BLEND_OPAQUE, DEPTH_NONE, RASTER_FILL_CULL_BACK, MSAA_1X},
+            {BLEND_OPAQUE, DEPTH_READ_WRITE, RASTER_FILL_CULL_NONE, MSAA_1X},
+            {BLEND_OPAQUE, DEPTH_READ_WRITE, RASTER_FILL_CULL_BACK, MSAA_2X},
+        };
+
+        // Create vertex input state from reflection (simplified)
+        VkPipelineVertexInputStateCreateInfo vi_ci{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+
+        // Input assembly
+        VkPipelineInputAssemblyStateCreateInfo ia_ci{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        ia_ci.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        // Viewport state (dynamic)
+        VkPipelineViewportStateCreateInfo vp_ci{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        vp_ci.viewportCount = 1;
+        vp_ci.scissorCount = 1;
+
+        // Dynamic state
+        VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo ds_ci{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        ds_ci.dynamicStateCount = 2;
+        ds_ci.pDynamicStates = dynamic_states;
+
+        for (const auto& [blend_state, depth_stencil_state, rasterization_state, multisample_state] : common_variants) {
+            PipelineVariantKey key{program_id, blend_state, depth_stencil_state, rasterization_state, multisample_state};
+
+            // Skip if already exists
+            if (pipeline_variants_.find(key) != pipeline_variants_.end()) continue;
+
+            // Build rasterization state
+            VkPipelineRasterizationStateCreateInfo rs_ci{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+            rs_ci.polygonMode = (rasterization_state >= RASTER_WIREFRAME_CULL_BACK) ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+            switch (rasterization_state) {
+                case RASTER_FILL_CULL_BACK:
+                case RASTER_WIREFRAME_CULL_BACK:
+                    rs_ci.cullMode = VK_CULL_MODE_BACK_BIT;
+                    break;
+                case RASTER_FILL_CULL_FRONT:
+                    rs_ci.cullMode = VK_CULL_MODE_FRONT_BIT;
+                    break;
+                case RASTER_FILL_CULL_NONE:
+                case RASTER_WIREFRAME_CULL_NONE:
+                    rs_ci.cullMode = VK_CULL_MODE_NONE;
+                    break;
+            }
+            rs_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
+            rs_ci.lineWidth = 1.0f;
+
+            // Build multisample state
+            VkPipelineMultisampleStateCreateInfo ms_ci{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+            switch (multisample_state) {
+                case MSAA_1X: ms_ci.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; break;
+                case MSAA_2X: ms_ci.rasterizationSamples = VK_SAMPLE_COUNT_2_BIT; break;
+                case MSAA_4X: ms_ci.rasterizationSamples = VK_SAMPLE_COUNT_4_BIT; break;
+                case MSAA_8X: ms_ci.rasterizationSamples = VK_SAMPLE_COUNT_8_BIT; break;
+            }
+            ms_ci.sampleShadingEnable = VK_FALSE;
+
+            // Build depth/stencil state
+            VkPipelineDepthStencilStateCreateInfo ds_ci2{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+            switch (depth_stencil_state) {
+                case DEPTH_NONE:
+                    ds_ci2.depthTestEnable = VK_FALSE;
+                    ds_ci2.depthWriteEnable = VK_FALSE;
+                    ds_ci2.stencilTestEnable = VK_FALSE;
+                    break;
+                case DEPTH_READ_ONLY:
+                    ds_ci2.depthTestEnable = VK_TRUE;
+                    ds_ci2.depthWriteEnable = VK_FALSE;
+                    ds_ci2.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+                    ds_ci2.stencilTestEnable = VK_FALSE;
+                    break;
+                case DEPTH_READ_WRITE:
+                    ds_ci2.depthTestEnable = VK_TRUE;
+                    ds_ci2.depthWriteEnable = VK_TRUE;
+                    ds_ci2.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+                    ds_ci2.stencilTestEnable = VK_FALSE;
+                    break;
+                case DEPTH_STENCIL_READ_WRITE:
+                    ds_ci2.depthTestEnable = VK_TRUE;
+                    ds_ci2.depthWriteEnable = VK_TRUE;
+                    ds_ci2.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+                    ds_ci2.stencilTestEnable = VK_TRUE;
+                    // Stencil ops would be configured here
+                    break;
+                case DEPTH_STENCIL_READ_ONLY:
+                    ds_ci2.depthTestEnable = VK_TRUE;
+                    ds_ci2.depthWriteEnable = VK_FALSE;
+                    ds_ci2.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+                    ds_ci2.stencilTestEnable = VK_TRUE;
+                    break;
+            }
+
+            // Build color blend state
+            VkPipelineColorBlendAttachmentState cb_attachment{};
+            cb_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+            switch (blend_state) {
+                case BLEND_OPAQUE:
+                    cb_attachment.blendEnable = VK_FALSE;
+                    break;
+                case BLEND_ALPHA:
+                    cb_attachment.blendEnable = VK_TRUE;
+                    cb_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                    cb_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    cb_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                    cb_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    break;
+                case BLEND_ADDITIVE:
+                    cb_attachment.blendEnable = VK_TRUE;
+                    cb_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                    cb_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                    cb_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    cb_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                    cb_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                    cb_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    break;
+                case BLEND_PREMULTIPLIED_ALPHA:
+                    cb_attachment.blendEnable = VK_TRUE;
+                    cb_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                    cb_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    cb_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                    cb_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    break;
+                case BLEND_MULTIPLY:
+                    cb_attachment.blendEnable = VK_TRUE;
+                    cb_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;
+                    cb_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    cb_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+                    cb_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                    cb_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    break;
+            }
+
+            VkPipelineColorBlendStateCreateInfo cb_ci{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+            cb_ci.attachmentCount = 1;
+            cb_ci.pAttachments = &cb_attachment;
+
+            // Create graphics pipeline
+            VkGraphicsPipelineCreateInfo gp_ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+            gp_ci.stageCount = static_cast<uint32_t>(stages.size());
+            gp_ci.pStages = stages.data();
+            gp_ci.pVertexInputState = &vi_ci;
+            gp_ci.pInputAssemblyState = &ia_ci;
+            gp_ci.pViewportState = &vp_ci;
+            gp_ci.pRasterizationState = &rs_ci;
+            gp_ci.pMultisampleState = &ms_ci;
+            gp_ci.pDepthStencilState = &ds_ci2;
+            gp_ci.pColorBlendState = &cb_ci;
+            gp_ci.pDynamicState = &ds_ci;
+            gp_ci.layout = pipeline_layout;
+            gp_ci.renderPass = render_pass_;
+
+            VkPipeline variant_pipeline = VK_NULL_HANDLE;
+            VkResult result = vkCreateGraphicsPipelines(device_, pipeline_cache_, 1, &gp_ci, nullptr, &variant_pipeline);
+
+            if (result == VK_SUCCESS && variant_pipeline != VK_NULL_HANDLE) {
+                pipeline_variants_[key] = variant_pipeline;
+            }
+        }
+    }
 
     void shutdown() {
         if (!initialized_) return;
