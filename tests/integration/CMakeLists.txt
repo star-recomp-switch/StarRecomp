@@ -76,6 +76,7 @@ target_link_libraries(kirbyrecomp_hle_tests PRIVATE
     kirbyrecomp_rt
     sr_common
     Vulkan::Vulkan
+    opus::opus
     GTest::gtest_main
 )
 

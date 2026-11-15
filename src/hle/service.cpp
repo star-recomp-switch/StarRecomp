@@ -1587,6 +1587,12 @@ private:
     std::unordered_map<uint64_t, VkPipeline> pipelines_;
     std::unordered_map<uint64_t, VkPipelineLayout> pipeline_layouts_;
 
+    // Helper function for getting timestamps
+    static uint64_t get_timestamp_ns() {
+        using namespace std::chrono;
+        return duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count();
+    }
+
     // Pipeline variants for common state combinations
     struct PipelineVariantKey {
         uint64_t program_id;

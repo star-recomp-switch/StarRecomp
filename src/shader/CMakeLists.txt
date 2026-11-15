@@ -16,7 +16,7 @@ target_include_directories(kirbyrecomp_shader PUBLIC
 )
 
 target_link_libraries(kirbyrecomp_shader PUBLIC
-    kirbyrecomp_runtime
+    kirbyrecomp_rt
 )
 
 # Enable C++20
