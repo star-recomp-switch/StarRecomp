@@ -139,7 +139,13 @@
   - Graphics pipeline with vertex input, rasterization, blend, depth/stencil
   - Compute pipeline creation
   - Pipeline cache integration for install-time compilation
-- [ ] Synchronization (fences, semaphores, events, timeline semaphores)
+- [x] Synchronization (fences, semaphores, events, timeline semaphores)
+  - Fence management: create, destroy, wait, reset, wait_fences
+  - Semaphore management: binary and timeline semaphores
+  - Timeline semaphore pool: create pool, acquire/release semaphores
+  - Event management: create, destroy, set, reset, wait_event
+  - Submit command buffer with full synchronization (wait/signal semaphores, fence)
+  - Timeline semaphore submit info support
 - [ ] VMA integration for memory allocation
 - [ ] FSR 1 + SMAA integration
 
