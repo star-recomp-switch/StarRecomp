@@ -76,10 +76,11 @@
   - [x] Extract vertex attributes from vertex shader
   - [x] Extract fragment outputs from fragment shader
   - [x] Extract compute local workgroup size
-- [ ] **Pipeline cache generation** - Serialize VkPipelineCache at install time
-  - [ ] Collect all shader variants during translation
-  - [ ] Generate pipeline cache binary
-  - [ ] Implement cache loading at runtime
+- [x] **Pipeline cache generation** - Serialize VkPipelineCache at install time
+  - [x] Create pipeline cache on device initialization
+  - [x] Load existing cache from disk (%APPDATA%/KirbyRecomp/)
+  - [x] Save cache to disk on device finalize
+  - [x] Use cache for graphics/compute pipeline creation
 - [ ] **Variant preparation** - Prepare common state combinations ahead of time
   - [ ] Blend state variants
   - [ ] Depth/stencil state variants

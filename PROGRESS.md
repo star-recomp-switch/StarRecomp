@@ -108,7 +108,11 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Extract fragment outputs from fragment shader
   - Extract compute local workgroup size
   - Handle special registers (thread ID, workgroup ID, local invocation ID)
-- 🔄 Pipeline cache generation
+- ✅ **Pipeline cache generation** - Serialize VkPipelineCache at install time
+  - Create pipeline cache on device initialization
+  - Load existing cache from disk (%APPDATA%/KirbyRecomp/pipeline_cache.bin)
+  - Save cache to disk on device finalize (NVN device destroy)
+  - Use cache for graphics/compute pipeline creation (vkCreateGraphicsPipelines, vkCreateComputePipelines)
 - 🔄 Variant preparation for install-time compilation
 
 ---
