@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(kirbyrecomp_nvn STATIC
     command_buffer.cpp
     resource_manager.cpp
+    command_translator.cpp
 )
 
 target_include_directories(kirbyrecomp_nvn PUBLIC

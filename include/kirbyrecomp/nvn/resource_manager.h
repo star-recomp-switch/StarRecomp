@@ -335,6 +335,14 @@ public:
     VkFormat nvn_format_to_vk(TextureFormat format) const;
     VkImageAspectFlags get_format_aspect(VkFormat format) const;
 
+    // Public accessors for descriptor pools (needed by command translator)
+    const std::unordered_map<uint64_t, VkDescriptorPool>& get_descriptor_pools() const {
+        return descriptor_pools_;
+    }
+    std::unordered_map<uint64_t, VkDescriptorPool>& get_descriptor_pools() {
+        return descriptor_pools_;
+    }
+
     // Get device
     VkDevice device() const { return device_; }
     VkPhysicalDevice physical_device() const { return physical_device_; }

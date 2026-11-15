@@ -253,52 +253,9 @@ struct CmdUpdateBuffer {
 };
 #pragma pack(pop)
 
-// ============================================================================
-// Command Buffer Translator
-// Translates parsed Maxwell commands to Vulkan command buffer recording
-// ============================================================================
-
-class CommandBufferTranslator {
-public:
-    CommandBufferTranslator(VkDevice device, VkCommandBuffer cmd_buffer,
-                            const class ResourceManager& resource_manager);
-    ~CommandBufferTranslator() = default;
-
-    // Translate and record a parsed command
-    bool translate_command(const ParsedCommand& cmd);
-
-    // Translate a full command buffer
-    bool translate_command_buffer(const std::vector<ParsedCommand>& commands);
-
-    // Get last error
-    const std::string& get_last_error() const { return last_error_; }
-
-private:
-    VkDevice device_;
-    VkCommandBuffer cmd_buffer_;
-    const class ResourceManager& resource_manager_;
-    std::string last_error_;
-
-    // Translation helpers
-    bool translate_draw_arrays(const ParsedCommand& cmd);
-    bool translate_draw_elements(const ParsedCommand& cmd);
-    bool translate_dispatch(const ParsedCommand& cmd);
-    bool translate_bind_vertex_buffer(const ParsedCommand& cmd);
-    bool translate_bind_index_buffer(const ParsedCommand& cmd);
-    bool translate_bind_shader_resource(const ParsedCommand& cmd);
-    bool translate_set_viewport(const ParsedCommand& cmd);
-    bool translate_set_scissor(const ParsedCommand& cmd);
-    bool translate_barrier(const ParsedCommand& cmd);
-    bool translate_copy_buffer(const ParsedCommand& cmd);
-    bool translate_copy_texture(const ParsedCommand& cmd);
-
-    // Vulkan resource lookup helpers
-    VkBuffer get_buffer(uint64_t resource_id) const;
-    VkImage get_image(uint64_t resource_id) const;
-    VkImageView get_image_view(uint64_t resource_id) const;
-    VkSampler get_sampler(uint64_t resource_id) const;
-    VkPipeline get_pipeline(uint64_t pipeline_id) const;
-    VkPipelineLayout get_pipeline_layout(uint64_t pipeline_id) const;
-};
+// Command Buffer Translator is defined in command_translator.h
+// Forward declaration
+class ResourceManager;
+class CommandBufferTranslator;
 
 } // namespace kirbyrecomp::nvn
