@@ -81,11 +81,12 @@
   - [x] Load existing cache from disk (%APPDATA%/KirbyRecomp/)
   - [x] Save cache to disk on device finalize
   - [x] Use cache for graphics/compute pipeline creation
-- [ ] **Variant preparation** - Prepare common state combinations ahead of time
-  - [ ] Blend state variants
-  - [ ] Depth/stencil state variants
-  - [ ] Rasterization state variants
-  - [ ] Multisample state variants
+- [x] **Variant preparation** - Prepare common state combinations ahead of time
+  - [x] Blend state variants (opaque, alpha, additive, premultiplied, multiply)
+  - [x] Depth/stencil state variants (none, read-only, read-write, stencil)
+  - [x] Rasterization state variants (fill cull back/front/none, wireframe)
+  - [x] Multisample state variants (1x, 2x, 4x, 8x)
+  - [x] Pipeline variant pre-generation with cache integration
 - [ ] **Tests for Maxwell → SPIR-V translation**
   - [ ] Unit tests for decoder (golden fixtures)
   - [ ] Integration tests with known shader bytecode

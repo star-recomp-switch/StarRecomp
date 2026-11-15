@@ -113,7 +113,13 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Load existing cache from disk (%APPDATA%/KirbyRecomp/pipeline_cache.bin)
   - Save cache to disk on device finalize (NVN device destroy)
   - Use cache for graphics/compute pipeline creation (vkCreateGraphicsPipelines, vkCreateComputePipelines)
-- 🔄 Variant preparation for install-time compilation
+- ✅ **Variant preparation** - Prepare common state combinations ahead of time
+  - Blend state variants: opaque, alpha, additive, premultiplied alpha, multiply
+  - Depth/stencil state variants: none, read-only, read-write, stencil read-write/read-only
+  - Rasterization state variants: fill cull back/front/none, wireframe cull back/none
+  - Multisample state variants: 1x, 2x, 4x, 8x MSAA
+  - Pre-generate common variant combinations (9 presets) on program creation
+  - Variants stored in lookup map keyed by (program_id, blend, depth_stencil, rasterization, multisample)
 
 ---
 
