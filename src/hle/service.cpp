@@ -5,6 +5,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <fstream>
+#include <filesystem>
 #include <vulkan/vulkan.h>
 #include <cstring>
 #include <condition_variable>
@@ -1332,6 +1333,10 @@ private:
     std::unordered_map<uint64_t, VkPipeline> pipelines_;
     std::unordered_map<uint64_t, VkPipelineLayout> pipeline_layouts_;
 
+    // Pipeline cache for install-time compilation
+    VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;
+    std::string pipeline_cache_path_;
+
     void shutdown() {
         if (!initialized_) return;
 
@@ -1381,6 +1386,83 @@ private:
         }
 
         initialized_ = false;
+    }
+
+    // Pipeline cache management
+    void create_pipeline_cache() {
+        // Determine cache path
+        char* appdata = nullptr;
+        size_t len = 0;
+        _dupenv_s(&appdata, &len, "APPDATA");
+        if (appdata) {
+            pipeline_cache_path_ = std::string(appdata) + "\\KirbyRecomp\\pipeline_cache.bin";
+            free(appdata);
+        } else {
+            pipeline_cache_path_ = "pipeline_cache.bin";
+        }
+
+        // Create directory if needed
+        std::filesystem::path cache_dir = std::filesystem::path(pipeline_cache_path_).parent_path();
+        std::filesystem::create_directories(cache_dir);
+
+        // Try to load existing cache
+        load_pipeline_cache();
+
+        // If no cache loaded, create new one
+        if (pipeline_cache_ == VK_NULL_HANDLE) {
+            VkPipelineCacheCreateInfo cache_info{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+            cache_info.initialDataSize = 0;
+            cache_info.pInitialData = nullptr;
+            VkResult result = vkCreatePipelineCache(device_, &cache_info, nullptr, &pipeline_cache_);
+            if (result != VK_SUCCESS) {
+                pipeline_cache_ = VK_NULL_HANDLE;
+            }
+        }
+    }
+
+    void load_pipeline_cache() {
+        if (!std::filesystem::exists(pipeline_cache_path_)) {
+            return;
+        }
+
+        std::ifstream file(pipeline_cache_path_, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) return;
+
+        size_t size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> data(size);
+        file.read(reinterpret_cast<char*>(data.data()), size);
+        file.close();
+
+        if (data.empty()) return;
+
+        VkPipelineCacheCreateInfo cache_info{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        cache_info.initialDataSize = data.size();
+        cache_info.pInitialData = data.data();
+
+        VkResult result = vkCreatePipelineCache(device_, &cache_info, nullptr, &pipeline_cache_);
+        if (result != VK_SUCCESS) {
+            pipeline_cache_ = VK_NULL_HANDLE;
+        }
+    }
+
+    void save_pipeline_cache() {
+        if (pipeline_cache_ == VK_NULL_HANDLE) return;
+
+        size_t data_size = 0;
+        VkResult result = vkGetPipelineCacheData(device_, pipeline_cache_, &data_size, nullptr);
+        if (result != VK_SUCCESS || data_size == 0) return;
+
+        std::vector<uint8_t> data(data_size);
+        result = vkGetPipelineCacheData(device_, pipeline_cache_, &data_size, data.data());
+        if (result != VK_SUCCESS) return;
+
+        std::ofstream file(pipeline_cache_path_, std::ios::binary);
+        if (!file.is_open()) return;
+
+        file.write(reinterpret_cast<const char*>(data.data()), data_size);
+        file.close();
     }
 
     // Helper to create Vulkan instance
@@ -1684,6 +1766,9 @@ private:
             return Result::InvalidState; // Already initialized
         }
 
+        // Try to load existing pipeline cache
+        load_pipeline_cache();
+
         Result result;
         result = create_instance();
         if (result != Result::Success) return result;
@@ -1697,6 +1782,9 @@ private:
 
         result = create_logical_device();
         if (result != Result::Success) return result;
+
+        // Create pipeline cache
+        create_pipeline_cache();
 
         // Create command pool
         VkCommandPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
@@ -1716,6 +1804,8 @@ private:
     }
 
     Result device_finalize(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
+        // Save pipeline cache before shutdown (install-time compilation)
+        save_pipeline_cache();
         shutdown();
         return Result::Success;
     }
@@ -1954,7 +2044,7 @@ private:
             cp_ci.stage = stages[0];
             cp_ci.layout = pipeline_layout;
 
-            result = vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &cp_ci, nullptr, &pipeline);
+            result = vkCreateComputePipelines(device_, pipeline_cache_, 1, &cp_ci, nullptr, &pipeline);
         } else {
             // Graphics pipeline (minimal setup)
             VkGraphicsPipelineCreateInfo gp_ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
@@ -2007,7 +2097,7 @@ private:
             ds_ci.pDynamicStates = dynamic_states;
             gp_ci.pDynamicState = &ds_ci;
 
-            result = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &gp_ci, nullptr, &pipeline);
+            result = vkCreateGraphicsPipelines(device_, pipeline_cache_, 1, &gp_ci, nullptr, &pipeline);
         }
 
         if (result != VK_SUCCESS) {
