@@ -15,6 +15,9 @@ add_library(kirbyrecomp_nvn STATIC
     command_translator.cpp
 )
 
+# Find VMA
+find_package(VMA REQUIRED)
+
 target_include_directories(kirbyrecomp_nvn PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include
@@ -24,6 +27,7 @@ target_include_directories(kirbyrecomp_nvn PUBLIC
 target_link_libraries(kirbyrecomp_nvn PUBLIC
     kirbyrecomp_shader
     Vulkan::Vulkan
+    VMA::VMA
 )
 
 # Add shader module include directory

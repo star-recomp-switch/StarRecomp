@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 
 // Include shader reflection types (needed for PipelineDesc, ShaderModuleResource)
 #include "kirbyrecomp/shader/shader.h"
@@ -313,7 +314,8 @@ struct ComputePipelineDesc {
 
 struct BufferResource {
     VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;  // For backward compat, stores VmaAllocation
+    VmaAllocation vma_allocation = VK_NULL_HANDLE;
     VkBufferView view = VK_NULL_HANDLE;
     BufferDesc desc;
     uint64_t gpu_address = 0;  // For GPU virtual addressing
@@ -322,7 +324,8 @@ struct BufferResource {
 
 struct TextureResource {
     VkImage image = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;  // For backward compat, stores VmaAllocation
+    VmaAllocation vma_allocation = VK_NULL_HANDLE;
     VkImageView default_view = VK_NULL_HANDLE;
     std::vector<VkImageView> mip_views;
     std::vector<VkImageView> array_views;
@@ -526,6 +529,9 @@ private:
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
     VkPhysicalDeviceMemoryProperties memory_properties_;
     std::string last_error_;
+
+    // VMA allocator
+    VmaAllocator vma_allocator_ = VK_NULL_HANDLE;
 
     // Pipeline cache for install-time compilation
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;

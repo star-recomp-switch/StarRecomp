@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
+#include <vk_mem_alloc.h>
 
 namespace kirbyrecomp::nvn {
 
@@ -17,23 +18,44 @@ namespace kirbyrecomp::nvn {
 ResourceManager::ResourceManager(VkDevice device, VkPhysicalDevice physical_device)
     : device_(device), physical_device_(physical_device) {
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
+
+    // Initialize VMA allocator
+    VmaAllocatorCreateInfo allocator_info{};
+    allocator_info.physicalDevice = physical_device_;
+    allocator_info.device = device_;
+    allocator_info.instance = VK_NULL_HANDLE; // Will be set if available
+    allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
+                           VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT |
+                           VMA_ALLOCATOR_CREATE_KHR_BIND_MEMORY2_BIT;
+
+    VkResult result = vmaCreateAllocator(&allocator_info, &vma_allocator_);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vmaCreateAllocator failed: " + std::to_string(result);
+    }
 }
 
 ResourceManager::~ResourceManager() {
-    // Cleanup all resources
+    // Cleanup all resources using VMA where applicable
+    // Buffers
     for (auto& [handle, buffer] : buffers_) {
         if (buffer.view != VK_NULL_HANDLE) {
             vkDestroyBufferView(device_, buffer.view, nullptr);
         }
         if (buffer.buffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device_, buffer.buffer, nullptr);
-        }
-        if (buffer.memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device_, buffer.memory, nullptr);
+            // Use VMA to destroy buffer and free memory
+            if (buffer.vma_allocation != VK_NULL_HANDLE) {
+                vmaDestroyBuffer(vma_allocator_, buffer.buffer, buffer.vma_allocation);
+            } else if (buffer.buffer != VK_NULL_HANDLE) {
+                vkDestroyBuffer(device_, buffer.buffer, nullptr);
+                if (buffer.memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(device_, buffer.memory, nullptr);
+                }
+            }
         }
     }
     buffers_.clear();
 
+    // Textures
     for (auto& [handle, texture] : textures_) {
         for (auto view : texture.mip_views) {
             if (view != VK_NULL_HANDLE) vkDestroyImageView(device_, view, nullptr);
@@ -45,14 +67,19 @@ ResourceManager::~ResourceManager() {
             vkDestroyImageView(device_, texture.default_view, nullptr);
         }
         if (texture.image != VK_NULL_HANDLE) {
-            vkDestroyImage(device_, texture.image, nullptr);
-        }
-        if (texture.memory != VK_NULL_HANDLE) {
-            vkFreeMemory(device_, texture.memory, nullptr);
+            if (texture.vma_allocation != VK_NULL_HANDLE) {
+                vmaDestroyImage(vma_allocator_, texture.image, texture.vma_allocation);
+            } else {
+                vkDestroyImage(device_, texture.image, nullptr);
+                if (texture.memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(device_, texture.memory, nullptr);
+                }
+            }
         }
     }
     textures_.clear();
 
+    // Samplers
     for (auto& [handle, sampler] : samplers_) {
         if (sampler.sampler != VK_NULL_HANDLE) {
             vkDestroySampler(device_, sampler.sampler, nullptr);
@@ -60,6 +87,15 @@ ResourceManager::~ResourceManager() {
     }
     samplers_.clear();
 
+    // Shader modules
+    for (auto& [handle, shader] : shader_modules_) {
+        if (shader.module != VK_NULL_HANDLE) {
+            vkDestroyShaderModule(device_, shader.module, nullptr);
+        }
+    }
+    shader_modules_.clear();
+
+    // Pipelines
     for (auto& [handle, pipeline] : pipelines_) {
         if (pipeline.pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(device_, pipeline.pipeline, nullptr);
@@ -75,6 +111,7 @@ ResourceManager::~ResourceManager() {
     }
     pipelines_.clear();
 
+    // Descriptor sets/pools
     for (auto& [handle, pool] : descriptor_pools_) {
         if (pool != VK_NULL_HANDLE) {
             vkDestroyDescriptorPool(device_, pool, nullptr);
@@ -82,12 +119,61 @@ ResourceManager::~ResourceManager() {
     }
     descriptor_pools_.clear();
 
+    for (auto& [handle, pool] : descriptor_sets_) {
+        // Sets are freed with pool
+    }
+    descriptor_sets_.clear();
+
+    // Command pools
     for (auto& [handle, pool] : command_pools_) {
         if (pool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device_, pool, nullptr);
         }
     }
     command_pools_.clear();
+
+    // Synchronization resources
+    for (auto& [handle, fence] : fences_) {
+        if (fence.fence != VK_NULL_HANDLE) {
+            vkDestroyFence(device_, fence.fence, nullptr);
+        }
+    }
+    fences_.clear();
+
+    for (auto& [handle, semaphore] : semaphores_) {
+        if (semaphore.semaphore != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device_, semaphore.semaphore, nullptr);
+        }
+    }
+    semaphores_.clear();
+
+    for (auto& [handle, pool] : timeline_semaphore_pools_) {
+        for (auto semaphore : pool.semaphores) {
+            if (semaphore != VK_NULL_HANDLE) {
+                vkDestroySemaphore(device_, semaphore, nullptr);
+            }
+        }
+    }
+    timeline_semaphore_pools_.clear();
+
+    for (auto& [handle, event] : events_) {
+        if (event.event != VK_NULL_HANDLE) {
+            vkDestroyEvent(device_, event.event, nullptr);
+        }
+    }
+    events_.clear();
+
+    // Destroy VMA allocator last
+    if (vma_allocator_ != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(vma_allocator_);
+        vma_allocator_ = VK_NULL_HANDLE;
+    }
+
+    // Destroy pipeline cache
+    if (pipeline_cache_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(device_, pipeline_cache_, nullptr);
+        pipeline_cache_ = VK_NULL_HANDLE;
+    }
 }
 
 bool ResourceManager::initialize() {
@@ -151,64 +237,54 @@ bool ResourceManager::create_buffer_internal(BufferResource& resource) {
 
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VkResult result = vkCreateBuffer(device_, &buffer_info, nullptr, &resource.buffer);
-    if (result != VK_SUCCESS) {
-        last_error_ = "vkCreateBuffer failed: " + std::to_string(result);
-        return false;
-    }
+    // Determine memory usage for VMA
+    VmaMemoryUsage vma_usage = VMA_MEMORY_USAGE_AUTO;
+    VmaAllocationCreateFlags vma_flags = 0;
 
-    // Get memory requirements
-    VkMemoryRequirements mem_reqs;
-    vkGetBufferMemoryRequirements(device_, resource.buffer, &mem_reqs);
-
-    // Determine memory type
-    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     if (resource.desc.persistent_map) {
-        properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        vma_usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+        vma_flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                     VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    } else {
+        vma_usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     }
 
-    uint32_t memory_type = find_memory_type(mem_reqs.memoryTypeBits, properties);
-    if (memory_type == UINT32_MAX) {
-        last_error_ = "Failed to find suitable memory type for buffer";
-        vkDestroyBuffer(device_, resource.buffer, nullptr);
-        resource.buffer = VK_NULL_HANDLE;
-        return false;
-    }
-
-    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.memoryTypeIndex = memory_type;
-
-    // Add buffer device address info for shader device address
-    VkMemoryAllocateFlagsInfoKHR flags_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR};
     if (buffer_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-        flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
-        alloc_info.pNext = &flags_info;
+        // VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT is set on allocator
+        // Device address is handled automatically by VMA
     }
 
-    result = vkAllocateMemory(device_, &alloc_info, nullptr, &resource.memory);
+    VmaAllocationCreateInfo vma_alloc_info{};
+    vma_alloc_info.usage = vma_usage;
+    vma_alloc_info.flags = vma_flags;
+    vma_alloc_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    if (resource.desc.persistent_map) {
+        vma_alloc_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    }
+
+    // Use VMA to create buffer and allocate memory in one call
+    VmaAllocationInfo vma_alloc_info_out{};
+    VkResult result = vmaCreateBuffer(vma_allocator_, &buffer_info, &vma_alloc_info,
+                                       &resource.buffer, &resource.vma_allocation, &vma_alloc_info_out);
     if (result != VK_SUCCESS) {
-        last_error_ = "vkAllocateMemory failed: " + std::to_string(result);
-        vkDestroyBuffer(device_, resource.buffer, nullptr);
-        resource.buffer = VK_NULL_HANDLE;
+        last_error_ = "vmaCreateBuffer failed: " + std::to_string(result);
         return false;
     }
 
-    result = vkBindBufferMemory(device_, resource.buffer, resource.memory, 0);
-    if (result != VK_SUCCESS) {
-        last_error_ = "vkBindBufferMemory failed: " + std::to_string(result);
-        vkFreeMemory(device_, resource.memory, nullptr);
-        vkDestroyBuffer(device_, resource.buffer, nullptr);
-        resource.memory = VK_NULL_HANDLE;
-        resource.buffer = VK_NULL_HANDLE;
-        return false;
-    }
+    // Store VMA allocation handle for later cleanup
+    resource.memory = reinterpret_cast<VkDeviceMemory>(resource.vma_allocation);
+    resource.gpu_address = 0;
 
     // Get GPU address if shader device address is used
     if (buffer_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
         VkBufferDeviceAddressInfoKHR addr_info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR};
         addr_info.buffer = resource.buffer;
         resource.gpu_address = vkGetBufferDeviceAddress(device_, &addr_info);
+    }
+
+    // Get mapped pointer if persistent
+    if (resource.desc.persistent_map) {
+        resource.mapped_ptr = vma_alloc_info_out.pMappedData;
     }
 
     // Create buffer view for constant/storage buffers if needed
@@ -236,10 +312,16 @@ void ResourceManager::destroy_buffer(uint64_t handle) {
         vkDestroyBufferView(device_, resource.view, nullptr);
     }
     if (resource.buffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, resource.buffer, nullptr);
-    }
-    if (resource.memory != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, resource.memory, nullptr);
+        // Use VMA to destroy buffer and free memory
+        if (resource.vma_allocation != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(vma_allocator_, resource.buffer, resource.vma_allocation);
+        } else if (resource.buffer != VK_NULL_HANDLE) {
+            // Fallback for non-VMA buffers
+            vkDestroyBuffer(device_, resource.buffer, nullptr);
+            if (resource.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device_, resource.memory, nullptr);
+            }
+        }
     }
     buffers_.erase(it);
 }
@@ -365,39 +447,21 @@ bool ResourceManager::create_texture_internal(TextureResource& resource) {
         return false;
     }
 
-    // Get memory requirements
-    VkMemoryRequirements mem_reqs;
-    vkGetImageMemoryRequirements(device_, resource.image, &mem_reqs);
+    // Use VMA to allocate memory for the image
+    VmaAllocationCreateInfo vma_alloc_info{};
+    vma_alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    vma_alloc_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    uint32_t memory_type = find_memory_type(mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    if (memory_type == UINT32_MAX) {
-        last_error_ = "Failed to find suitable memory type for texture";
-        vkDestroyImage(device_, resource.image, nullptr);
-        resource.image = VK_NULL_HANDLE;
-        return false;
-    }
-
-    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.memoryTypeIndex = memory_type;
-
-    result = vkAllocateMemory(device_, &alloc_info, nullptr, &resource.memory);
+    VmaAllocationInfo vma_alloc_info_out{};
+    result = vmaCreateImage(vma_allocator_, &image_info, &vma_alloc_info,
+                             &resource.image, &resource.vma_allocation, &vma_alloc_info_out);
     if (result != VK_SUCCESS) {
-        last_error_ = "vkAllocateMemory failed: " + std::to_string(result);
-        vkDestroyImage(device_, resource.image, nullptr);
-        resource.image = VK_NULL_HANDLE;
+        last_error_ = "vmaCreateImage failed: " + std::to_string(result);
         return false;
     }
 
-    result = vkBindImageMemory(device_, resource.image, resource.memory, 0);
-    if (result != VK_SUCCESS) {
-        last_error_ = "vkBindImageMemory failed: " + std::to_string(result);
-        vkFreeMemory(device_, resource.memory, nullptr);
-        vkDestroyImage(device_, resource.image, nullptr);
-        resource.memory = VK_NULL_HANDLE;
-        resource.image = VK_NULL_HANDLE;
-        return false;
-    }
+    // Store VMA allocation handle for later cleanup
+    resource.memory = reinterpret_cast<VkDeviceMemory>(resource.vma_allocation);
 
     // Create default image view
     VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -462,10 +526,16 @@ void ResourceManager::destroy_texture(uint64_t handle) {
         vkDestroyImageView(device_, resource.default_view, nullptr);
     }
     if (resource.image != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, resource.image, nullptr);
-    }
-    if (resource.memory != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, resource.memory, nullptr);
+        // Use VMA to destroy image and free memory
+        if (resource.vma_allocation != VK_NULL_HANDLE) {
+            vmaDestroyImage(vma_allocator_, resource.image, resource.vma_allocation);
+        } else if (resource.image != VK_NULL_HANDLE) {
+            // Fallback for non-VMA images
+            vkDestroyImage(device_, resource.image, nullptr);
+            if (resource.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device_, resource.memory, nullptr);
+            }
+        }
     }
     textures_.erase(it);
 }
