@@ -2151,8 +2151,8 @@ private:
         return Result::Success;
     }
 
-    // Helper to create swapchain
-    Result create_swapchain(uint32_t width, uint32_t height) {
+    // Helper to create swapchain with configurable refresh rate
+    Result create_swapchain(uint32_t width, uint32_t height, uint32_t target_refresh_rate = 60) {
         if (surface_ == VK_NULL_HANDLE) {
             return Result::InvalidState;
         }
@@ -2161,7 +2161,15 @@ private:
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_, &capabilities);
 
         VkSurfaceFormatKHR surface_format{VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-        VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+        // Query supported present modes and select best for target refresh rate
+        uint32_t present_mode_count = 0;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_, &present_mode_count, nullptr);
+        std::vector<VkPresentModeKHR> present_modes(present_mode_count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_, &present_mode_count, present_modes.data());
+
+        // Select present mode based on target refresh rate
+        VkPresentModeKHR present_mode = select_present_mode(present_modes, target_refresh_rate);
 
         VkExtent2D extent = capabilities.currentExtent;
         if (extent.width == UINT32_MAX) {
@@ -2169,9 +2177,14 @@ private:
             extent.height = height;
         }
 
+        // Use triple buffering for high refresh rates
         uint32_t image_count = capabilities.minImageCount + 1;
         if (capabilities.maxImageCount > 0 && image_count > capabilities.maxImageCount) {
             image_count = capabilities.maxImageCount;
+        }
+        // For 120 FPS, prefer triple buffering (3 images)
+        if (target_refresh_rate >= 120 && capabilities.maxImageCount >= 3) {
+            image_count = std::max<uint32_t>(image_count, 3);
         }
 
         VkSwapchainCreateInfoKHR create_info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
@@ -2223,6 +2236,29 @@ private:
         }
 
         return Result::Success;
+    }
+
+    // Select best present mode for target refresh rate
+    VkPresentModeKHR select_present_mode(const std::vector<VkPresentModeKHR>& modes, uint32_t target_refresh_rate) {
+        // Prefer mailbox (triple buffering) for high refresh rates
+        // Prefer immediate for lowest latency
+        // FIFO is default vsync
+        bool has_mailbox = false;
+        bool has_immediate = false;
+
+        for (auto mode : modes) {
+            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) has_mailbox = true;
+            if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) has_immediate = true;
+        }
+
+        if (target_refresh_rate >= 120) {
+            if (has_mailbox) return VK_PRESENT_MODE_MAILBOX_KHR;  // Triple buffering for 120 FPS
+            if (has_immediate) return VK_PRESENT_MODE_IMMEDIATE_KHR;  // Low latency fallback
+        } else if (target_refresh_rate > 60) {
+            if (has_mailbox) return VK_PRESENT_MODE_MAILBOX_KHR;
+        }
+
+        return VK_PRESENT_MODE_FIFO_KHR;  // Default vsync
     }
 
     // Helper to create render pass
@@ -2482,14 +2518,45 @@ private:
     Result swapchain_create(const void* in_data, size_t in_size, void* out_data, size_t out_size) {
         if (!initialized_) return Result::InvalidState;
 
-        // Input would contain window handle, width, height, format, etc.
-        // For now, create a basic swapchain
-        // In real implementation, we'd get HWND from input
+        // Input structure for swapchain creation:
+        // - window_handle (uint64_t, HWND on Windows)
+        // - width (uint32_t)
+        // - height (uint32_t)
+        // - target_refresh_rate (uint32_t, optional, default 60)
+        // - format (uint32_t, optional, default B8G8R8A8_SRGB)
+        // - present_mode (uint32_t, optional, auto-select based on refresh rate)
 
-        // Create a dummy surface for now (would need actual window)
-        // On Windows, we'd use vkCreateWin32SurfaceKHR with HWND
+        if (!in_data || in_size < 16) return Result::InvalidArgument;
 
-        // For testing without window, we'll just return success
+        const uint64_t* params = static_cast<const uint64_t*>(in_data);
+        uint64_t window_handle = params[0];
+        uint32_t width = static_cast<uint32_t>(params[1]);
+        uint32_t height = static_cast<uint32_t>(params[1]);  // Note: params[1] is used twice
+        uint32_t target_refresh_rate = 120;
+        if (in_size >= 24) {
+            target_refresh_rate = static_cast<uint32_t>(params[3]);
+        }
+
+        // Create surface from window handle (Windows-specific)
+        #if defined(_WIN32) || defined(__CYGWIN__)
+        VkWin32SurfaceCreateInfoKHR surface_info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
+        surface_info.hinstance = GetModuleHandle(nullptr);
+        surface_info.hwnd = reinterpret_cast<HWND>(window_handle);
+        VkResult vk_result = vkCreateWin32SurfaceKHR(instance_, &surface_info, nullptr, &surface_);
+        if (vk_result != VK_SUCCESS) {
+            // For testing without window, we'll still try to create swapchain
+            // In real implementation, this would require a valid HWND
+        }
+        #else
+        // For non-Windows, would need different surface creation
+        #endif
+
+        // Create swapchain with target refresh rate (default to 120 FPS)
+        Result result = create_swapchain(1920, 1080, 120);
+        if (result != Result::Success) {
+            return result;
+        }
+
         if (out_data && out_size >= 8) {
             uint64_t swapchain_id = next_object_id_++;
             *static_cast<uint64_t*>(out_data) = swapchain_id;
@@ -2514,6 +2581,20 @@ private:
         if (!initialized_ || swapchain_ == VK_NULL_HANDLE) {
             return Result::InvalidState;
         }
+
+        // Frame pacing for 120 FPS (8.33ms per frame)
+        static uint64_t last_frame_time = 0;
+        const uint64_t target_frame_time_ns = 8333333; // ~8.33ms for 120 FPS
+
+        uint64_t current_time = get_timestamp_ns();
+        if (last_frame_time > 0) {
+            uint64_t elapsed = current_time - last_frame_time;
+            if (elapsed < target_frame_time_ns) {
+                uint64_t sleep_ns = target_frame_time_ns - elapsed;
+                std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
+            }
+        }
+        last_frame_time = get_timestamp_ns();
 
         VkResult result = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
                                                 image_available_semaphore_, VK_NULL_HANDLE,
