@@ -121,6 +121,33 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - Pre-generate common variant combinations (9 presets) on program creation
   - Variants stored in lookup map keyed by (program_id, blend, depth_stencil, rasterization, multisample)
 
+- 🔄 **Milestone 6: NVN → Vulkan Runtime** - IN PROGRESS
+  - ✅ Maxwell FIFO command parser (command_buffer.h/cpp)
+    - Command header parsing (opcode, size)
+    - Draw commands (DRAW_ARRAYS, DRAW_ELEMENTS, etc.)
+    - Compute dispatch (DISPATCH, DISPATCH_INDIRECT)
+    - Resource binding (BIND_VERTEX_BUFFER, BIND_INDEX_BUFFER, BIND_SHADER_RESOURCE)
+    - Pipeline state (SET_VIEWPORT, SET_SCISSOR, SET_BLEND_STATE, etc.)
+    - Buffer/texture copy operations
+    - Synchronization (BARRIER, EVENT_SIGNAL, EVENT_WAIT)
+    - Memory management commands
+  - ✅ Resource management (resource_manager.h/cpp)
+    - Buffer management with GPU virtual addressing
+    - Texture management with NVN→Vulkan format conversion
+    - Sampler management with full descriptor support
+    - Descriptor pool/set management
+    - Pipeline management (stubs)
+    - Command pool/buffer allocation
+    - Synchronization primitives (fence, semaphore, event)
+    - Memory type selection and format mapping
+  - 🔄 Command processor dispatch to Vulkan
+  - 🔄 PSO creation & caching with proper descriptor set layouts
+  - 🔄 Draw/dispatch command translation to Vulkan
+  - 🔄 Synchronization (fences, semaphores, events, timeline semaphores)
+  - 🔄 Compute pipeline support
+  - 🔄 VMA integration for memory allocation
+  - 🔄 FSR 1 + SMAA integration
+
 ---
 
 ## Known Limitations / Technical Debt
@@ -164,7 +191,11 @@ KirbyRecomp/
 │   ├── Findnlohmann_json.cmake
 │   ├── Findopus.cmake
 ├── src/
-│   ├── shader/                 # NEW: Shader translation module
+│   ├── nvn/                    # NEW: NVN runtime module (Milestone 6)
+│   │   ├── CMakeLists.txt
+│   │   ├── command_buffer.h/cpp  # Maxwell FIFO command parser
+│   │   ├── resource_manager.h/cpp  # Vulkan resource management
+│   ├── shader/                 # Shader translation module (Milestone 5)
 │   │   ├── CMakeLists.txt
 │   │   ├── shader.h/cpp        # NVN container parser, main translator
 │   │   ├── maxwell_decoder.h/cpp  # Maxwell ISA decoder

@@ -100,12 +100,28 @@
 
 ---
 
-## 📋 PLANNED: Milestone 6 - NVN → Vulkan Runtime
+## 🔄 IN PROGRESS: Milestone 6 - NVN → Vulkan Runtime
 
 ### Command Buffer & Resource Management
-- [ ] Maxwell FIFO command parser (using SwitchRecomp's command_processor)
+- [x] Maxwell FIFO command parser (command_buffer.h/cpp)
+  - Command header parsing (opcode, size)
+  - Draw commands (DRAW_ARRAYS, DRAW_ELEMENTS, etc.)
+  - Compute dispatch (DISPATCH, DISPATCH_INDIRECT)
+  - Resource binding (BIND_VERTEX_BUFFER, BIND_INDEX_BUFFER, BIND_SHADER_RESOURCE)
+  - Pipeline state (SET_VIEWPORT, SET_SCISSOR, SET_BLEND_STATE, etc.)
+  - Buffer/texture copy operations
+  - Synchronization (BARRIER, EVENT_SIGNAL, EVENT_WAIT)
+  - Memory management commands
+- [x] Resource management (resource_manager.h/cpp)
+  - Buffer management with GPU virtual addressing
+  - Texture management with NVN→Vulkan format conversion
+  - Sampler management with full descriptor support
+  - Descriptor pool/set management
+  - Pipeline management (stubs)
+  - Command pool/buffer allocation
+  - Synchronization primitives (fence, semaphore, event)
+  - Memory type selection and format mapping
 - [ ] Command processor dispatch to Vulkan
-- [ ] Resource management (textures, buffers, samplers, images)
 - [ ] PSO creation & caching with proper descriptor set layouts
 - [ ] Draw/dispatch command translation to Vulkan
 - [ ] Synchronization (fences, semaphores, events, timeline semaphores)
