@@ -493,7 +493,7 @@ public:
     std::optional<const EventResource*> get_event(uint64_t handle) const;
     VkResult set_event(uint64_t handle);
     VkResult reset_event(uint64_t handle);
-    VkResult wait_event(uint64_t handle, VkPipelineStageFlags stage_mask);
+    VkResult wait_event(VkCommandBuffer cmd_buffer, uint64_t handle, VkPipelineStageFlags stage_mask);
 
     // Synchronization - Submit with synchronization
     VkResult submit_command_buffer(VkCommandBuffer cmd_buffer,
@@ -517,6 +517,9 @@ public:
         return descriptor_pools_;
     }
 
+    // Pipeline cache accessor
+    VkPipelineCache get_pipeline_cache() const { return pipeline_cache_; }
+
     // Get device
     VkDevice device() const { return device_; }
     VkPhysicalDevice physical_device() const { return physical_device_; }
@@ -532,6 +535,9 @@ private:
 
     // VMA allocator
     VmaAllocator vma_allocator_ = VK_NULL_HANDLE;
+
+    // Graphics queue for command submission
+    VkQueue graphics_queue_ = VK_NULL_HANDLE;
 
     // Pipeline cache for install-time compilation
     VkPipelineCache pipeline_cache_ = VK_NULL_HANDLE;

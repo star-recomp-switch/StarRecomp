@@ -13,6 +13,7 @@ add_library(kirbyrecomp_nvn STATIC
     command_buffer.cpp
     resource_manager.cpp
     command_translator.cpp
+    fsr_smaa.cpp
 )
 
 # Find VMA

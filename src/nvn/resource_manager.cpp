@@ -1561,22 +1561,22 @@ VkResult ResourceManager::signal_semaphore(uint64_t handle, uint64_t value) {
     auto opt = get_semaphore(handle);
     if (!opt || !*opt) return VK_ERROR_UNKNOWN;
 
-    SemaphoreResource& resource = *opt;
-    if (!resource.is_timeline) {
+    SemaphoreResource* resource = *opt;
+    if (!resource->is_timeline) {
         // Binary semaphore - just signal
         VkSemaphoreSignalInfo signal_info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
-        signal_info.semaphore = resource.semaphore;
+        signal_info.semaphore = resource->semaphore;
         signal_info.value = 0;
         return vkSignalSemaphore(device_, &signal_info);
     }
 
     // Timeline semaphore - signal with value
     VkSemaphoreSignalInfo signal_info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
-    signal_info.semaphore = resource.semaphore;
+    signal_info.semaphore = resource->semaphore;
     signal_info.value = value;
     VkResult result = vkSignalSemaphore(device_, &signal_info);
     if (result == VK_SUCCESS) {
-        resource.current_value = value;
+        resource->current_value = value;
     }
     return result;
 }
@@ -1585,12 +1585,12 @@ VkResult ResourceManager::wait_semaphore(uint64_t handle, uint64_t value, uint64
     auto opt = get_semaphore(handle);
     if (!opt || !*opt) return VK_ERROR_UNKNOWN;
 
-    SemaphoreResource& resource = *opt;
-    if (!resource.is_timeline) {
+    SemaphoreResource* resource = *opt;
+    if (!resource->is_timeline) {
         // Binary semaphore - wait with zero value
         VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
         wait_info.semaphoreCount = 1;
-        wait_info.pSemaphores = &resource.semaphore;
+        wait_info.pSemaphores = &resource->semaphore;
         wait_info.pValues = nullptr;
         return vkWaitSemaphores(device_, &wait_info, timeout_ns);
     }
@@ -1598,11 +1598,11 @@ VkResult ResourceManager::wait_semaphore(uint64_t handle, uint64_t value, uint64
     // Timeline semaphore
     VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
     wait_info.semaphoreCount = 1;
-    wait_info.pSemaphores = &resource.semaphore;
+    wait_info.pSemaphores = &resource->semaphore;
     wait_info.pValues = &value;
     VkResult result = vkWaitSemaphores(device_, &wait_info, timeout_ns);
     if (result == VK_SUCCESS) {
-        resource.current_value = value;
+        resource->current_value = value;
     }
     return result;
 }
@@ -1743,11 +1743,18 @@ VkResult ResourceManager::reset_event(uint64_t handle) {
     return vkResetEvent(device_, (*opt)->event);
 }
 
-VkResult ResourceManager::wait_event(uint64_t handle, VkPipelineStageFlags stage_mask) {
+VkResult ResourceManager::wait_event(VkCommandBuffer cmd_buffer, uint64_t handle, VkPipelineStageFlags stage_mask) {
     auto opt = get_event(handle);
     if (!opt || !*opt) return VK_ERROR_UNKNOWN;
-    return vkCmdWaitEvents(device_, 0, nullptr, nullptr, 1, &(*opt)->event,
-                           stage_mask, stage_mask, 0, nullptr, 0, nullptr);
+    // vkCmdWaitEvents signature:
+    // commandBuffer, eventCount, pEvents, pSrcStageMasks, pDstStageMasks,
+    // memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers,
+    // imageMemoryBarrierCount, pImageMemoryBarriers
+    // pSrcStageMasks and pDstStageMasks are arrays of VkPipelineStageFlags
+    VkPipelineStageFlags src_stage = stage_mask;
+    VkPipelineStageFlags dst_stage = stage_mask;
+    vkCmdWaitEvents(cmd_buffer, 1, &(*opt)->event, &src_stage, &dst_stage, 0, nullptr, 0, nullptr, 0, nullptr);
+    return VK_SUCCESS;
 }
 
 // Submit with synchronization
@@ -1821,8 +1828,12 @@ VkResult ResourceManager::submit_command_buffer(VkCommandBuffer cmd_buffer,
         }
     }
 
-    // Submit
-    VkQueue queue = graphics_queue_; // Simplified - would use proper queue
+    // Submit using the stored queue
+    VkQueue queue = graphics_queue_;
+    if (queue == VK_NULL_HANDLE) {
+        last_error_ = "No graphics queue available for submission";
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
     return vkQueueSubmit(queue, 1, &submit_info, fence);
 }
 
