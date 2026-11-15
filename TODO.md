@@ -152,7 +152,11 @@
   - Automatic memory type selection and dedicated allocations
   - Proper cleanup with vmaDestroyBuffer/vmaDestroyImage
   - Buffer device address support via VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
-- [ ] FSR 1 + SMAA integration
+- [x] FSR 1 + SMAA integration
+  - FSR 1.0 EASU (Edge Adaptive Spatial Upsampling) pipeline
+  - FSR 1.0 RCAS (Robust Contrast Adaptive Sharpening) pipeline
+  - SMAA edge detection, blend weight, and neighborhood blending pipelines
+  - Quality mode selection and parameter configuration
 
 ### Advanced Features
 - [ ] Texture format conversion (ASTC, BC, etc.)
