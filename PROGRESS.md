@@ -1,7 +1,7 @@
 # KirbyRecomp Project Progress
 
-**Last Updated:** 2026-11-14
-**Status:** Milestone 5 (NVN Shader Translation) - IN PROGRESS
+**Last Updated:** 2026-11-16
+**Status:** Milestone 5 (NVN Shader Translation) - COMPLETE | Milestone 6 (NVN → Vulkan Runtime) - IN PROGRESS
 
 ---
 
@@ -78,7 +78,7 @@ KirbyRecomp is a static recompilation pipeline for *Kirby and the Forgotten Land
   - ✅ EventSynchronization
   - ✅ CloseHandle
 
-### 🔄 Milestone 5: NVN Shader Translation - IN PROGRESS
+### ✅ Milestone 5: NVN Shader Translation - COMPLETE
 - ✅ Created shader module structure (`src/shader/`)
 - ✅ NVN shader container format parser (`shader.h`/`shader.cpp`)
   - NVN8 magic, header structure, section offsets
