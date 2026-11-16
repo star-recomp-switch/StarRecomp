@@ -1,4 +1,20 @@
 cmake_minimum_required(VERSION 3.25)
+
+# Pre-set mingw64 paths for clang BEFORE project()
+# We hardcode the mingw64 path since we know we're using it
+set(MINGW64_ROOT "/c/msys64/mingw64")
+set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
+set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0")
+set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0/x86_64-w64-mingw32")
+message(STATUS "Found mingw64: ${MINGW64_ROOT}")
+# Prevent CMake from adding system include paths as -isystem (they'd come before our -I)
+set(CMAKE_SYSTEM_INCLUDE_PATH "")
+# Use -nostdinc++ to disable clang's built-in standard include search
+# We'll manually add the libstdc++ paths and system paths in correct order
+# The order matters: libstdc++ first (for #include_next), then system includes
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+
 project(KirbyRecomp VERSION 0.1.0 LANGUAGES CXX C)
 
 # Enable testing at the top level so CTest discovers tests in subdirectories
@@ -29,28 +45,17 @@ set(KIRBYRECOMP_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
 if(MSVC)
   add_compile_options(/W4 /WX /permissive- /utf-8)
 else()
-  add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-character-conversion)
-endif()
-
-# Add mingw64 system include paths for clang
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  # Find mingw64 installation
-  find_program(MINGW64_CLANG NAMES clang++ PATHS /c/msys64/mingw64/bin)
-  if(MINGW64_CLANG)
-    get_filename_component(MINGW64_ROOT "${MINGW64_CLANG}" DIRECTORY)
-    get_filename_component(MINGW64_ROOT "${MINGW64_ROOT}" DIRECTORY)
-    # Store paths for use in target_include_directories with SYSTEM
-    set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
-    set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0")
-    set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0/x86_64-w64-mingw32")
-    message(STATUS "Found mingw64: ${MINGW64_ROOT}")
-  endif()
+  # Remove -Wpedantic as it's too aggressive for system headers
+  # Add specific warning suppressions for system header issues
+  add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-character-conversion -Wno-c++17-attribute-extensions -Wno-c++20-attribute-extensions -Wno-c2y-extensions -Wno-invalid-constexpr -Wno-unknown-warning-option -Wno-deprecated-builtins -Wno-suggest-override -Wno-shorten-64-to-32 -Wno-old-style-cast -Wno-unused-lambda-capture -Wno-shadow -Wno-unused-but-set-variable -Winconsistent-missing-override -Wno-switch -Wno-keyword-compat -Wno-c++14-attribute-extensions)
 endif()
 
 # Add mingw64 C++ standard library includes to targets that need C++20
 function(add_mingw64_cxx_includes target)
   if(MINGW64_CXX_INCLUDE_DIR)
-    target_include_directories(${target} SYSTEM PRIVATE
+    # Add libstdc++ paths FIRST (BEFORE) so #include_next works for cstdlib->stdlib.h
+    # The mingw64 system include (/mingw64/include) will be found automatically by clang
+    target_include_directories(${target} SYSTEM BEFORE PRIVATE
       ${MINGW64_CXX_INCLUDE_DIR}
       ${MINGW64_CXX_ARCH_INCLUDE_DIR}
     )
@@ -60,13 +65,14 @@ endfunction()
 # Define version macro from project version
 add_compile_definitions(KIRBYRECOMP_VERSION="${PROJECT_VERSION}")
 
+# Include vendor/switchrecomp (has its own CMakeLists.txt) - sets SR_INCLUDE_DIR
+# Do this BEFORE find_package to ensure our -I options come first
+add_subdirectory(vendor/switchrecomp)
+
 # vcpkg toolchain detection (optional, for find_package)
 if(DEFINED ENV{VCPKG_ROOT})
   set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "vcpkg toolchain")
 endif()
-
-# Include vendor/switchrecomp (has its own CMakeLists.txt) - sets SR_INCLUDE_DIR
-add_subdirectory(vendor/switchrecomp)
 
 # Add custom CMake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -84,6 +90,12 @@ find_package(FFmpeg REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(LZ4 REQUIRED)
+
+# Add Windows system libraries for missing symbols
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  # SHGetValueA -> shell32, _dupenv_s -> ucrtbase
+  link_libraries(shell32 ucrtbase)
+endif()
 
 # Include codegen library
 add_subdirectory(src/codegen)
