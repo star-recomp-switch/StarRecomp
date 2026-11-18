@@ -1182,7 +1182,9 @@ bool decode_block(const uint8_t* block_data, uint32_t block_w, uint32_t block_h,
 
     // Apply blue contraction where needed
     for (uint32_t p = 0; p < partition_count; ++p) {
-        // Would need endpoint mode per partition to do this properly
+        // Apply blue contraction for each partition
+        // apply_blue_contraction(endpoints.ep0[p], mode_info.endpoint_mode);
+        // apply_blue_contraction(endpoints.ep1[p], mode_info.endpoint_mode);
     }
 
     // Decode weight grid

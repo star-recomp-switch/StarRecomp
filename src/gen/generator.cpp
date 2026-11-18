@@ -6,6 +6,8 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
+#include <iomanip>
 
 #include "kirbyrecomp/nso/nso.h"
 #include "switchrecomp/translator/translator.h"
@@ -243,13 +245,154 @@ bool Generator::WriteRegistrationHeader() {
 
 bool Generator::WriteOutput() {
     std::cout << "[Generator] Writing output to " << options_.output_dir << "\n";
-    // TODO: Implement output writing
+
     // 1. Create output directory structure
-    // 2. Write per-function C files
-    // 3. Write module header/source
+    std::string mkdir_cmd = "mkdir \"" + options_.output_dir + "\" 2>nul";
+    system(mkdir_cmd.c_str());
+
+    std::string modules_dir = options_.output_dir + "/modules";
+    std::string shaders_dir = options_.output_dir + "/shaders";
+    system(("mkdir \"" + modules_dir + "\" 2>nul").c_str());
+    system(("mkdir \"" + shaders_dir + "\" 2>nul").c_str());
+
+    // 2. Write per-function C files (already done in ProcessModule)
+    // The C files are already written in ProcessModule()
+
+    // 3. Write module header/source (already done in ProcessModule)
+
     // 4. Write shader SPIR-V and pipeline cache
+    if (!WriteShaders()) {
+        std::cerr << "[Generator] Failed to write shaders\n";
+        return false;
+    }
+
     // 5. Write provenance.toml
+    if (!WriteProvenance()) {
+        std::cerr << "[Generator] Failed to write provenance.toml\n";
+        return false;
+    }
+
+    std::cout << "[Generator] Output written to " << options_.output_dir << "\n";
     return true;
+}
+
+bool Generator::WriteShaders() {
+    std::cout << "[Generator] Writing shader SPIR-V and pipeline cache\n";
+
+    std::string shaders_dir = options_.output_dir + "/shaders";
+    std::string mkdir_cmd = "mkdir \"" + std::string(options_.output_dir) + "/shaders\" 2>nul";
+    system(mkdir_cmd.c_str());
+
+    // Write shader SPIR-V binaries
+    for (const auto& module : modules_) {
+        // Check if module has shaders
+        if (!module.shaders.empty()) {
+            for (const auto& [shader_id, spirv] : module.shaders) {
+                std::string shader_path = options_.output_dir + "/shaders/" + module.name + "_shader_" + std::to_string(shader_id) + ".spv";
+                std::ofstream out(shader_path.c_str(), std::ios::binary);
+                if (!out) {
+                    std::cerr << "[Generator] Failed to open shader output: " << shader_path << "\n";
+                    return false;
+                }
+                out.write(reinterpret_cast<const char*>(spirv.data()), spirv.size() * sizeof(uint32_t));
+                out.close();
+                std::cout << "[Generator] Wrote shader: " << shader_path << " (" << spirv.size() * 4 << " bytes)\n";
+            }
+        }
+    }
+
+    // Write pipeline cache
+    if (!pipeline_cache_data_.empty()) {
+        std::string cache_path = options_.output_dir + "/pipeline_cache.bin";
+        std::ofstream out(cache_path.c_str(), std::ios::binary);
+        if (!out) {
+            std::cerr << "[Generator] Failed to open pipeline cache output: " << cache_path << "\n";
+            return false;
+        }
+        out.write(reinterpret_cast<const char*>(pipeline_cache_data_.data()), pipeline_cache_data_.size());
+        out.close();
+        std::cout << "[Generator] Wrote pipeline cache: " << cache_path << " (" << pipeline_cache_data_.size() << " bytes)\n";
+    }
+
+    std::cout << "[Generator] Shaders written to " << shaders_dir << "\n";
+    return true;
+}
+
+bool Generator::WriteProvenance() {
+    std::cout << "[Generator] Writing provenance.toml\n";
+
+    std::string provenance_path = options_.output_dir + "/provenance.toml";
+    std::ofstream out(provenance_path.c_str());
+    if (!out) {
+        std::cerr << "[Generator] Failed to open provenance.toml\n";
+        return false;
+    }
+
+    out << "# KirbyRecomp Provenance Information\n";
+    out << "# Generated on: " << GetCurrentTimestamp() << "\n\n";
+
+    out << "[build]\n";
+    out << "generator_version = \"0.1.0\"\n";
+    out << "switchrecomp_version = \"0.1.0\"\n";
+    out << "build_timestamp = \"" << GetCurrentTimestamp() << "\"\n\n";
+
+    out << "[game]\n";
+    out << "title_id = \"0100B6C0115A4000\"\n";
+    out << "title_name = \"Kirby and the Forgotten Land\"\n";
+    out << "region = \"ALL\"\n\n";
+
+    out << "[source]\n";
+    out << "exefs_path = \"" << options_.exefs_path << "\"\n";
+    out << "romfs_path = \"" << options_.romfs_path << "\"\n";
+    out << "keys_path = \"" << options_.keys_path << "\"\n\n";
+
+    out << "[modules]\n";
+    for (const auto& module : modules_) {
+        out << "[[modules]]\n";
+        out << "name = \"" << module.name << "\"\n";
+        out << "path = \"" << module.path << "\"\n";
+        out << "is_main = " << (module.is_main ? "true" : "false") << "\n";
+        out << "text_size = " << module.text_size << "\n";
+        out << "rodata_size = " << module.rodata_size << "\n";
+        out << "data_size = " << module.data_size << "\n";
+        out << "function_count = " << module.functions.size() << "\n";
+        out << "\n";
+    }
+
+    out << "[shaders]\n";
+    out << "count = " << GetTotalShaderCount() << "\n";
+    out << "pipeline_cache_size = " << pipeline_cache_data_.size() << "\n\n";
+
+    out << "[legal]\n";
+    out << "disclaimer = \"This file is generated for educational/research purposes. No Nintendo copyrighted code is included.\"\n";
+    out << "user_must_own_game = true\n";
+
+    out.close();
+    std::cout << "[Generator] Provenance written to " << provenance_path << "\n";
+    return true;
+}
+
+std::string Generator::GetCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    std::tm tm_buf;
+    std::tm* tm = std::localtime(&in_time_t);
+    if (tm) {
+        tm_buf = *tm;
+        tm = &tm_buf;
+    }
+    char buffer[64];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm);
+    return std::string(buffer);
+}
+
+size_t Generator::GetTotalShaderCount() const {
+    size_t count = 0;
+    for (const auto& module : modules_) {
+        count += module.shaders.size();
+    }
+    return count;
 }
 
 } // namespace kirbyrecomp::gen
