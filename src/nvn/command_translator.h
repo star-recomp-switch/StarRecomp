@@ -196,6 +196,15 @@ private:
     VkPipelineLayout get_pipeline_layout(uint64_t pipeline_id) const;
     VkDescriptorSet get_descriptor_set(uint64_t set_handle) const;
     VkDescriptorPool get_descriptor_pool(uint64_t pool_handle) const;
+
+    // VMA allocator access
+    VmaAllocator get_vma_allocator() const { return resource_manager_.get_vma_allocator(); }
+
+    // Texture format helpers
+    bool is_astc_format(uint32_t format) const;
+    uint32_t calculate_row_pitch(uint32_t format, uint32_t width) const;
+    uint32_t get_format_block_size(TextureFormat format) const;
+    VkImageAspectFlags get_format_aspect(VkFormat format) const;
 };
 
 } // namespace kirbyrecomp::nvn

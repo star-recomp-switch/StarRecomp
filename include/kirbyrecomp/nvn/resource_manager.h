@@ -520,6 +520,9 @@ public:
     // Pipeline cache accessor
     VkPipelineCache get_pipeline_cache() const { return pipeline_cache_; }
 
+    // VMA allocator accessor
+    VmaAllocator get_vma_allocator() const { return vma_allocator_; }
+
     // Get device
     VkDevice device() const { return device_; }
     VkPhysicalDevice physical_device() const { return physical_device_; }

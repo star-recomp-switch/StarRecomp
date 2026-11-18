@@ -19,6 +19,9 @@
 #include "kirbyrecomp/shader/maxwell_decoder.h"
 #include "kirbyrecomp/shader/spirv_generator.h"
 
+// KFL Save Data
+#include "kirbyrecomp/kfl/kfl_save.h"
+
 // Windows-specific Vulkan surface extension
 #if defined(_WIN32) || defined(__CYGWIN__)
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -2904,6 +2907,223 @@ private:
     }
 };
 
+// savedata: - Save Data Service
+class SavedataService : public IService {
+public:
+    SavedataService() = default;
+    ~SavedataService() override = default;
+
+    const char* get_name() const override { return "savedata:"; }
+
+    Result dispatch(Session* session, uint32_t command_id,
+                    const void* in_data, size_t in_size,
+                    void* out_data, size_t out_size) override {
+        // savedata: commands (simplified for Kirby Forgotten Land):
+        // 0: CreateSave
+        // 1: LoadSave
+        // 2: UpdateSave
+        // 3: DeleteSave
+        // 4: ListSaves
+        // 5: VerifySave
+        // 6: GetSaveMetadata
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (!initialized_) {
+            // Initialize with default save directory
+            std::string save_dir = "D:/Claude Stuff/KirbyRecomp/Saves";
+            if (!save_manager_.initialize(save_dir)) {
+                return Result::InvalidState;
+            }
+            initialized_ = true;
+        }
+
+        switch (command_id) {
+            case 0: // CreateSave
+                return create_save(in_data, in_size, out_data, out_size);
+            case 1: // LoadSave
+                return load_save(in_data, in_size, out_data, out_size);
+            case 2: // UpdateSave
+                return update_save(in_data, in_size, out_data, out_size);
+            case 3: // DeleteSave
+                return delete_save(in_data, in_size, out_data, out_size);
+            case 4: // ListSaves
+                return list_saves(in_data, in_size, out_data, out_size);
+            case 5: // VerifySave
+                return verify_save(in_data, in_size, out_data, out_size);
+            case 6: // GetSaveMetadata
+                return get_save_metadata(in_data, in_size, out_data, out_size);
+            default:
+                return Result::InvalidArgument;
+        }
+    }
+
+private:
+    mutable std::mutex mutex_;
+    kirbyrecomp::kfl::SaveDataManager save_manager_;
+    bool initialized_ = false;
+
+    Result create_save(const void* in_data, size_t in_size,
+                       void* out_data, size_t out_size) {
+        // Input: save_id (u64), save_name (char*), data (bytes), metadata struct
+        if (!in_data || in_size < 16) return Result::InvalidArgument;
+
+        const uint64_t* params = static_cast<const uint64_t*>(in_data);
+        uint64_t save_id = params[0];
+        const char* save_name = reinterpret_cast<const char*>(params[1]);
+        const uint8_t* data = reinterpret_cast<const uint8_t*>(params[2]);
+        uint32_t data_size = static_cast<uint32_t>(params[3]);
+
+        kirbyrecomp::kfl::SaveMetadata metadata{};
+        metadata.save_id = save_id;
+        metadata.save_name = save_name ? save_name : "default";
+        metadata.timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        metadata.playtime = 0;
+        metadata.completion_percent = 0;
+        metadata.current_world = "";
+        metadata.current_stage = "";
+        metadata.flags = 0;
+
+        std::vector<uint8_t> data_vec(data, data + data_size);
+        bool success = save_manager_.create_save(save_id, metadata.save_name, data_vec, metadata);
+
+        if (out_data && out_size >= 4) {
+            *static_cast<uint32_t*>(out_data) = success ? 0 : 1;
+        }
+        return success ? Result::Success : Result::InvalidState;
+    }
+
+    Result load_save(const void* in_data, size_t in_size,
+                     void* out_data, size_t out_size) {
+        // Input: save_id (u64), output buffer for data
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t save_id = *static_cast<const uint64_t*>(in_data);
+
+        kirbyrecomp::kfl::SaveMetadata metadata;
+        auto data = save_manager_.load_save(save_id, &metadata);
+
+        if (!data) {
+            if (out_data && out_size >= 4) {
+                *static_cast<uint32_t*>(out_data) = 1; // Not found
+            }
+            return Result::NotFound;
+        }
+
+        if (out_data && out_size >= 16) {
+            uint64_t* out = static_cast<uint64_t*>(out_data);
+            out[0] = save_id;
+            out[1] = data->size();
+        }
+        return Result::Success;
+    }
+
+    Result update_save(const void* in_data, size_t in_size,
+                       void* out_data, size_t out_size) {
+        if (!in_data || in_size < 16) return Result::InvalidArgument;
+
+        const uint64_t* params = static_cast<const uint64_t*>(in_data);
+        uint64_t save_id = params[0];
+        const uint8_t* data = reinterpret_cast<const uint8_t*>(params[1]);
+        uint32_t data_size = static_cast<uint32_t>(params[2]);
+
+        kirbyrecomp::kfl::SaveMetadata metadata{};
+        metadata.save_id = save_id;
+        metadata.timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        std::vector<uint8_t> data_vec(data, data + data_size);
+        bool success = save_manager_.update_save(save_id, data_vec, metadata);
+
+        if (out_data && out_size >= 4) {
+            *static_cast<uint32_t*>(out_data) = success ? 0 : 1;
+        }
+        return success ? Result::Success : Result::InvalidState;
+    }
+
+    Result delete_save(const void* in_data, size_t in_size,
+                       void* out_data, size_t out_size) {
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t save_id = *static_cast<const uint64_t*>(in_data);
+        bool success = save_manager_.delete_save(save_id);
+
+        if (out_data && out_size >= 4) {
+            *static_cast<uint32_t*>(out_data) = success ? 0 : 1;
+        }
+        return success ? Result::Success : Result::InvalidState;
+    }
+
+    Result list_saves(const void* in_data, size_t in_size,
+                      void* out_data, size_t out_size) {
+        auto saves = save_manager_.list_saves();
+
+        if (out_data && out_size >= 8) {
+            uint64_t* out = static_cast<uint64_t*>(out_data);
+            out[0] = saves.size();
+        }
+        return Result::Success;
+    }
+
+    Result verify_save(const void* in_data, size_t in_size,
+                       void* out_data, size_t out_size) {
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t save_id = *static_cast<const uint64_t*>(in_data);
+        bool valid = save_manager_.verify_save(save_id);
+
+        if (out_data && out_size >= 4) {
+            *static_cast<uint32_t*>(out_data) = valid ? 0 : 1;
+        }
+        return Result::Success;
+    }
+
+    Result get_save_metadata(const void* in_data, size_t in_size,
+                             void* out_data, size_t out_size) {
+        if (!in_data || in_size < 8) return Result::InvalidArgument;
+
+        uint64_t save_id = *static_cast<const uint64_t*>(in_data);
+        kirbyrecomp::kfl::SaveMetadata metadata;
+        auto data = save_manager_.load_save(save_id, &metadata);
+
+        if (!data) {
+            return Result::NotFound;
+        }
+
+        if (out_data && out_size >= 64) {
+            // Simplified metadata output
+            uint64_t* out = static_cast<uint64_t*>(out_data);
+            out[0] = metadata.save_id;
+            out[1] = metadata.timestamp;
+            out[2] = metadata.playtime;
+            out[3] = metadata.completion_percent;
+            out[4] = metadata.flags;
+        }
+        return Result::Success;
+    }
+};
+
+// Get NVN service for direct access (e.g., from SVC handlers)
+// This must be defined after NvnService class is complete
+NvnService* ServiceManager::get_nvn_service() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    auto it = services_.find("nvn:");
+    if (it == services_.end()) {
+        return nullptr;
+    }
+    return static_cast<NvnService*>(it->second.get());
+}
+
+// Get savedata service for direct access
+SavedataService* ServiceManager::get_savedata_service() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    auto it = services_.find("savedata:");
+    if (it == services_.end()) {
+        return nullptr;
+    }
+    return static_cast<SavedataService*>(it->second.get());
+}
+
 // Service Factory
 Result ServiceFactory::create_builtin_services(ServiceManager& sm) {
     Result result;
@@ -2936,6 +3156,9 @@ Result ServiceFactory::create_builtin_services(ServiceManager& sm) {
     if (result != Result::Success) return result;
 
     result = sm.register_service("nvn:", std::make_unique<NvnService>());
+    if (result != Result::Success) return result;
+
+    result = sm.register_service("savedata:", std::make_unique<SavedataService>());
     if (result != Result::Success) return result;
 
     return Result::Success;

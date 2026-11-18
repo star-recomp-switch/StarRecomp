@@ -251,6 +251,19 @@ struct CmdUpdateBuffer {
     uint32_t size;
     // Data follows
 };
+
+#pragma pack(push, 1)
+struct CmdUpdateTexture {
+    uint64_t texture_handle;
+    uint32_t mip_level;
+    uint32_t array_layer;
+    uint32_t x, y, z;          // Destination offset
+    uint32_t width, height, depth;  // Region size
+    uint32_t format;           // TextureFormat
+    uint32_t row_pitch;        // Bytes per row
+    uint32_t slice_pitch;      // Bytes per slice
+    uint64_t data_address;     // Source data address
+};
 #pragma pack(pop)
 
 // Command Buffer Translator is defined in command_translator.h

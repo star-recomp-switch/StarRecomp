@@ -13,6 +13,8 @@ namespace kr::hle {
 struct Service;
 struct Session;
 struct Server;
+class NvnService;
+class SavedataService;
 
 // Result codes (matching Horizon OS)
 enum class Result : uint32_t {
@@ -61,6 +63,12 @@ public:
     IService* get_service(const std::string& name);
     Session* create_session(const std::string& service_name);
     void close_session(uint64_t session_id);
+
+    // Get NVN service for direct access (e.g., from SVC handlers)
+    NvnService* get_nvn_service();
+
+    // Get savedata service for direct access
+    SavedataService* get_savedata_service();
 
 private:
     ServiceManager() = default;

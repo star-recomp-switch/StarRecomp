@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace kirbyrecomp::gen {
 
@@ -20,6 +22,8 @@ struct NsoModule {
     std::string name;
     std::string path;
     bool is_main = false;
+    // Track all translated functions for registration
+    std::vector<std::pair<uint64_t, std::string>> functions; // {guest_address, function_name}
     // TODO: Add parsed NSO data
     // std::vector<uint8_t> text_section;
     // std::vector<uint8_t> rodata_section;
@@ -40,6 +44,7 @@ private:
     bool ProcessModule(const NsoModule& module);
     bool TranslateShaders();
     bool WriteOutput();
+    bool WriteRegistrationHeader();
 
     GeneratorOptions options_;
     std::vector<NsoModule> modules_;

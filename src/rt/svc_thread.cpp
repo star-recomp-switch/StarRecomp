@@ -4,6 +4,7 @@
 
 #include "kirbyrecomp/runtime.h"
 #include "kirbyrecomp/types.h"
+#include "kirbyrecomp/hle/service.h"  // For ServiceManager
 
 #include <map>
 #include <memory>
@@ -44,6 +45,32 @@ static std::map<u64, bool> g_event_signaled; // event_id -> signaled state
 // Allocate a new thread handle
 static ThreadHandle allocate_handle() {
     return g_next_thread_handle++;
+}
+
+// Helper to call NVN service commands
+static kr::hle::Result call_nvn_service(uint32_t command_id,
+                                         const void* in_data, size_t in_size,
+                                         void* out_data, size_t out_size) {
+    auto& sm = kr::hle::ServiceManager::instance();
+    // Use the IService interface - NvnService implements IService
+    auto* service = sm.get_service("nvn:");
+    if (!service) {
+        return kr::hle::Result::NotFound;
+    }
+
+    // Create a session
+    auto* session = sm.create_session("nvn:");
+    if (!session) {
+        return kr::hle::Result::InvalidState;
+    }
+
+    // Call the command through IService interface
+    kr::hle::Result result = service->dispatch(session, command_id, in_data, in_size, out_data, out_size);
+
+    // Close session
+    sm.close_session(session->session_id);
+
+    return result;
 }
 
 // SVC 0x0A: CreateThread
@@ -276,6 +303,139 @@ static void svc_create_event(SrCpuState* cpu) {
     cpu->x[1] = event_id;
 }
 
+// ============================================================================
+// Timer SVCs (time: service)
+// ============================================================================
+
+// SVC: GetCurrentTime
+// Input: none
+// Output: x0 = current time in nanoseconds since epoch
+static void svc_get_current_time(SrCpuState* cpu) {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto ns = duration_cast<nanoseconds>(now.time_since_epoch()).count();
+    cpu->x[0] = static_cast<u64>(ns);
+    cpu->x[1] = 0; // Success
+}
+
+// SVC: GetSystemTick
+// Input: none
+// Output: x0 = system tick count (monotonic, in nanoseconds)
+static void svc_get_system_tick(SrCpuState* cpu) {
+    using namespace std::chrono;
+    auto now = steady_clock::now();
+    auto ns = duration_cast<nanoseconds>(now.time_since_epoch()).count();
+    cpu->x[0] = static_cast<u64>(ns);
+    cpu->x[1] = 0; // Success
+}
+
+// SVC: GetTimeZoneOffset
+// Input: none
+// Output: x0 = timezone offset in minutes, x1 = 0 (success)
+static void svc_get_timezone_offset(SrCpuState* cpu) {
+    // Return UTC offset (0 for simplicity, game can adjust)
+    cpu->x[0] = 0;
+    cpu->x[1] = 0;
+}
+
+// SVC: SetSystemTime
+// Input: x0 = new time in nanoseconds since epoch
+// Output: x0 = result code
+static void svc_set_system_time(SrCpuState* cpu) {
+    // Not implemented - read-only in our impl
+    cpu->x[0] = 1; // Not supported
+}
+
+// SVC: SleepThread (already implemented, but add alias for time: service)
+// SVC: WaitForVSync
+// Input: x0 = display_id (0 = main), x1 = timeout_ns
+// Output: x0 = result code (0 = VSync occurred)
+static void svc_wait_for_vsync(SrCpuState* cpu) {
+    // Wait for VSync by calling NVN swapchain_acquire_next_image (command 42)
+    // This connects to the Vulkan swapchain and implements frame pacing
+    u32 display_id = static_cast<u32>(cpu->x[0]);
+    u64 timeout_ns = cpu->x[1];
+
+    (void)display_id; // Ignore display_id for now
+    (void)timeout_ns; // For now, ignore timeout - NVN handles frame pacing
+
+    // Call NVN service swapchain_acquire_next_image (command 42)
+    kr::hle::Result result = call_nvn_service(42, nullptr, 0, nullptr, 0);
+
+    // Frame pacing fallback (120 FPS = 8.33ms) if NVN service not available
+    static uint64_t last_frame_time = 0;
+    const uint64_t target_frame_time_ns = 8333333; // ~8.33ms for 120 FPS
+
+    uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    if (last_frame_time > 0) {
+        uint64_t elapsed = current_time - last_frame_time;
+        if (elapsed < target_frame_time_ns) {
+            uint64_t sleep_ns = target_frame_time_ns - elapsed;
+            std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
+        }
+    }
+    last_frame_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    cpu->x[0] = (result == kr::hle::Result::Success) ? 0 : 1;
+}
+
+// SVC: GetDisplayInfo
+// Input: x0 = display_id, x1 = pointer to output buffer
+// Output: x0 = result code
+static void svc_get_display_info(SrCpuState* cpu) {
+    u32 display_id = static_cast<u32>(cpu->x[0]);
+    u64 buffer_ptr = cpu->x[1];
+
+    // For now, return basic 1920x1080 @ 60Hz info
+    // In a real impl, this would fill a struct at buffer_ptr
+    // struct { u32 width, height, refresh_rate_numerator, refresh_rate_denominator; }
+    cpu->x[0] = 0; // Success
+    cpu->x[1] = 1920; // width
+    cpu->x[2] = 1080; // height
+    cpu->x[3] = 60; // refresh rate
+    cpu->x[4] = 1; // refresh rate denominator
+}
+
+// ============================================================================
+// Display/Vi SVCs
+// ============================================================================
+
+// SVC: CreateDisplay
+// Input: x0 = display_type, x1 = params_ptr
+// Output: x0 = result, x1 = display_handle
+static void svc_create_display(SrCpuState* cpu) {
+    // Return a dummy display handle
+    static u64 next_display_handle = 0x1000;
+    cpu->x[0] = 0;
+    cpu->x[1] = next_display_handle++;
+}
+
+// SVC: SetDisplayMode
+// Input: x0 = display_handle, x1 = mode_ptr
+// Output: x0 = result
+static void svc_set_display_mode(SrCpuState* cpu) {
+    cpu->x[0] = 0;
+}
+
+// SVC: PresentFrame
+// Input: x0 = display_handle, x1 = frame_ptr, x2 = flags
+// Output: x0 = result
+static void svc_present_frame(SrCpuState* cpu) {
+    // Trigger frame present by calling NVN swapchain_queue_present (command 43)
+    // This presents the rendered frame to the swapchain
+    (void)cpu->x[0]; // display_handle
+    (void)cpu->x[1]; // frame_ptr
+    (void)cpu->x[2]; // flags
+
+    // Call NVN service swapchain_queue_present (command 43)
+    kr::hle::Result result = call_nvn_service(43, nullptr, 0, nullptr, 0);
+
+    cpu->x[0] = (result == kr::hle::Result::Success) ? 0 : 1;
+}
+
 // SVC: CloseHandle (not in original set, but useful for cleanup)
 // Input: x0 = handle
 // Output: x0 = result code
@@ -303,7 +463,15 @@ static void svc_close_handle(SrCpuState* cpu) {
         }
         cpu->x[0] = 0;
     } else {
-        cpu->x[0] = 1; // Not found
+        // Also check for event handles
+        std::lock_guard<std::mutex> lock(g_sync_mutex);
+        auto event_it = g_event_signaled.find(handle);
+        if (event_it != g_event_signaled.end()) {
+            g_event_signaled.erase(event_it);
+            cpu->x[0] = 0;
+        } else {
+            cpu->x[0] = 1; // Not found
+        }
     }
 }
 
@@ -315,17 +483,28 @@ struct ThreadSvcEntry {
 };
 
 constexpr ThreadSvcEntry kThreadSvcEntries[] = {
-    {0x0A, "CreateThread",        &svc_create_thread},
-    {0x0B, "WaitSynchronization", &svc_wait_synchronization},
-    {0x0C, "GetResult",           &svc_get_result},
-    {0x22, "StartThread",         &svc_start_thread},
-    {0x23, "ExitThread",          &svc_exit_thread},
-    {0x24, "SleepThread",         &svc_sleep_thread},
+    {0x0A, "CreateThread",           &svc_create_thread},
+    {0x0B, "WaitSynchronization",    &svc_wait_synchronization},
+    {0x0C, "GetResult",              &svc_get_result},
+    {0x14, "GetCurrentTime",         &svc_get_current_time},
+    {0x15, "GetSystemTick",          &svc_get_system_tick},
+    {0x16, "GetTimeZoneOffset",      &svc_get_timezone_offset},
+    {0x17, "SetSystemTime",          &svc_set_system_time},
+    {0x22, "StartThread",            &svc_start_thread},
+    {0x23, "ExitThread",             &svc_exit_thread},
+    {0x24, "SleepThread",            &svc_sleep_thread},
     // Extended SVCs for synchronization primitives
-    {0x40, "SignalEvent",         &svc_signal_event},
-    {0x41, "WaitEvent",           &svc_wait_event},
-    {0x42, "CreateEvent",         &svc_create_event},
-    {0x43, "CloseHandle",         &svc_close_handle},
+    {0x40, "SignalEvent",            &svc_signal_event},
+    {0x41, "WaitEvent",              &svc_wait_event},
+    {0x42, "CreateEvent",            &svc_create_event},
+    {0x43, "CloseHandle",            &svc_close_handle},
+    // Time SVCs
+    {0x50, "WaitForVSync",           &svc_wait_for_vsync},
+    {0x51, "GetDisplayInfo",         &svc_get_display_info},
+    // Display/Vi SVCs
+    {0x60, "CreateDisplay",          &svc_create_display},
+    {0x61, "SetDisplayMode",         &svc_set_display_mode},
+    {0x62, "PresentFrame",           &svc_present_frame},
 };
 
 // Get handler name for an SVC ID

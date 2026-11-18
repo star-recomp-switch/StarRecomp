@@ -6,10 +6,12 @@
 #ifdef __cplusplus
 #include "switchrecomp/runtime/runtime.h"
 #include "switchrecomp/runtime/vreg.h"
+#include "switchrecomp/platform/memory.h"
 using sr::runtime::GuestContext;
-using sr::runtime::MemProtect;
+using sr::platform::MemProtect;
 #else
 #include "switchrecomp/runtime/vreg.h"
+#include "switchrecomp/platform/memory.h"
 typedef struct GuestContext {
     uint64_t x[31];
     uint64_t sp;
@@ -35,49 +37,8 @@ bool  sr_rt_map_memory(uint64_t guest_addr, uint64_t size, uint32_t prot);
 }
 #endif
 
-// Forward declare the generated function
-void fn_7100574af9(GuestContext* ctx);
-
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#ifdef __cplusplus
-#include "switchrecomp/runtime/runtime.h"
-#include "switchrecomp/runtime/vreg.h"
-using sr::runtime::GuestContext;
-using sr::runtime::MemProtect;
-#else
-#include "switchrecomp/runtime/vreg.h"
-typedef struct GuestContext {
-    uint64_t x[31];
-    uint64_t sp;
-    uint64_t pc;
-    uint32_t nzcv;
-    sr_vreg v[32];
-    uint32_t fpcr;
-    uint32_t fpsr;
-    uint64_t shared_counter;
-    uint64_t thread_handle;
-} GuestContext;
-#endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-void* sr_rt_guest_to_host(GuestContext* ctx, uint64_t addr, uint64_t size, int write);
-void  sr_rt_call(GuestContext* ctx, uint64_t target);
-void  sr_rt_handle_svc(GuestContext* ctx, uint32_t svc_id);
-void  sr_rt_register_function(uint64_t guest_addr, void(*fn)(GuestContext*));
-bool  sr_rt_map_memory(uint64_t guest_addr, uint64_t size, uint32_t prot);
-#ifdef __cplusplus
-}
-#endif
-
-// Forward declare the generated function
-void fn_7100574af9(GuestContext* ctx);
+// Include auto-generated registration header
+#include "registration.h"
 
 int main(int argc, char** argv) {
     printf("KirbyRecomp - Starting recompiled game...\n");
@@ -113,13 +74,13 @@ int main(int argc, char** argv) {
     // On Switch, this is often at a fixed offset or in the 0x0 region
     // We'll leave it as 0 for now
 
-    // Register the entry point function
-    sr_rt_register_function(0x7100574AF9, fn_7100574af9);
+    // Register ALL functions from generated code
+    RegisterAllFunctions();
 
     // Call the entry point
     printf("Calling entry point at 0x7100574AF9...\n");
     fflush(stdout);
-    fn_7100574af9(&ctx);
+    fn_main_806b560f1404(&ctx);
 
     printf("Entry point returned\n");
     return 0;

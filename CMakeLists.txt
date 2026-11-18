@@ -1,3 +1,11 @@
+# Set the generator and make program BEFORE project() to avoid regeneration issues
+set(CMAKE_GENERATOR "Ninja")
+set(CMAKE_MAKE_PROGRAM "/c/devkitPro/msys2/usr/bin/ninja")
+
+# Explicitly set the compilers BEFORE project() to avoid auto-detection issues
+set(CMAKE_C_COMPILER "/c/msys64/mingw64/bin/clang.exe")
+set(CMAKE_CXX_COMPILER "/c/msys64/mingw64/bin/clang++.exe")
+
 cmake_minimum_required(VERSION 3.25)
 
 # Pre-set mingw64 paths for clang BEFORE project()
@@ -96,6 +104,18 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   # SHGetValueA -> shell32, _dupenv_s -> ucrtbase
   link_libraries(shell32 ucrtbase)
 endif()
+
+# ASTC decoder support - TODO: Use astcenc library when network available
+# For now, use stub implementation (decode at runtime via runtime transcoding)
+# include(FetchContent)
+# FetchContent_Declare(
+#     astcenc
+#     URL https://github.com/ARM-software/astcenc/archive/refs/tags/v4.1.0.tar.gz
+#     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+# )
+# set(ASTCENC_SHARED_LIB OFF CACHE BOOL "" FORCE)
+# set(ASTCENC_STATIC_LIB ON CACHE BOOL "" FORCE)
+# FetchContent_MakeAvailable(astcenc)
 
 # Include codegen library
 add_subdirectory(src/codegen)
