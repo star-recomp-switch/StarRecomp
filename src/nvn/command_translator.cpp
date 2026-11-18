@@ -750,6 +750,9 @@ struct BlockModeInfo {
     uint8_t weight_grid_w;
     uint8_t weight_grid_h;
     bool valid;
+    bool is_void_extent;
+    bool is_dual_plane;
+    uint16_t block_mode_raw;
 };
 
 // Block mode lookup table (simplified for 2D LDR)
@@ -759,42 +762,100 @@ static const BlockModeInfo block_mode_table[2048] = {
     // We'll compute on the fly instead
 };
 
-static inline BlockModeInfo decode_block_mode(uint16_t mode_bits) {
+static inline BlockModeInfo decode_block_mode(uint16_t block_mode) {
     BlockModeInfo info = {};
     info.valid = false;
 
-    // Extract mode fields
-    uint32_t mode = mode_bits & 0x7FF; // 11 bits
-
-    // Check for void extent (mode & 0x1F == 0x1F)
-    if ((mode & 0x1F) == 0x1F) {
+    // Check for void extent block
+    if ((block_mode & 0x1F) == 0x1F) {
         info.valid = true;
-        info.partition_count = 1;
-        info.dual_plane = 0;
-        info.color_endpoint_bits = 0;
-        info.weight_bits = 0;
+        info.is_void_extent = true;
         return info;
     }
 
-    // Parse regular block mode
-    // Layout: [DualPlane][WeightBits][ColorEndpointBits][PartitionCount][PartitionIndex...]
-    // Simplified parsing for common 2D LDR modes
-    uint32_t partition_bits = (mode >> 5) & 0x7; // bits 5-7
+    // Parse block mode according to ASTC spec (section C.2.1)
+    // 11-bit mode: [DualPlane(1)][WeightBits(4)][ColorEndpointBits(4)][PartitionCount(3)][PartitionIndex(10)]
+    // Bit layout (LSB to MSB):
+    //   bits 0-4:   Block type (5 bits) - 0x1F = void extent
+    //   bits 5-7:   Partition count (3 bits)
+    //   bits 8-11:  Color endpoint bits (4 bits)
+    //   bits 12-15: Weight bits (4 bits)
+    //   bit 16:     Dual plane flag
+    //   bits 17-27: Partition index (10 bits) - NOT in block_mode, read separately
+
+    uint16_t mode = block_mode & 0x7FF; // 11 bits
+
+    // Check for void extent block
+    if ((block_mode & 0x1F) == 0x1F) {
+        info.valid = true;
+        info.is_void_extent = true;
+        return info;
+    }
+
+    // Extract fields from block mode (ASTC spec C.2.1)
+    uint32_t partition_bits = (mode >> 5) & 0x7;      // bits 5-7
     uint32_t color_endpoint_bits = (mode >> 8) & 0xF; // bits 8-11
-    uint32_t weight_bits = (mode >> 12) & 0xF; // bits 12-15
-    uint32_t dual_plane = (mode >> 16) & 1; // bit 16
+    uint32_t weight_bits = (mode >> 12) & 0xF;        // bits 12-15
+    uint32_t dual_plane = (mode >> 16) & 1;           // bit 16
 
-    // This is a simplified version - real implementation needs full table
-    // For now, we'll use a practical decoder that handles the common cases
+    // Parse partition count from partition_bits (ASTC spec Table C.2.1)
+    // partition_bits values:
+    //  0-1:  invalid
+    //  2-3:   2 partitions
+    //  4-7:   3 partitions
+    //  8-11:  4 partitions
+    // 12-15: 1 partition (no partitioning)
+    uint32_t partition_count = 1;
+    if (partition_bits >= 12) {
+        // 1 partition (no partitioning)
+    } else if (partition_bits >= 8) {
+        partition_count = 4;
+    } else if (partition_bits >= 4) {
+        partition_count = 3;
+    } else if (partition_bits >= 2) {
+        partition_count = 2;
+    } else {
+        // Invalid partition bits
+        return info; // invalid
+    }
 
-    info.partition_count = 1;
-    info.partition_bits = 0;
-    info.dual_plane = 0;
-    info.color_endpoint_bits = 0;
-    info.weight_bits = 0;
-    info.weight_grid_w = 4;
-    info.weight_grid_h = 4;
+    // Weight grid dimensions (ASTC spec Table C.2.5)
+    static const uint8_t weight_grid_sizes[12][2] = {
+        {0, 0},   // 0: invalid
+        {1, 1},   // 1: 1x1
+        {1, 2},   // 2: 1x2
+        {2, 1},   // 3: 2x1
+        {2, 2},   // 4: 2x2
+        {2, 3},   // 5: 2x3
+        {3, 2},   // 6: 3x2
+        {3, 3},   // 7: 3x3
+        {3, 4},   // 8: 3x4
+        {4, 3},   // 9: 4x3
+        {4, 4},   // 10: 4x4
+        {1, 1}    // 11: single weight
+    };
+
+    uint32_t weight_grid_size = weight_bits & 0xF;
+    uint32_t weight_grid_w = 4;
+    uint32_t weight_grid_h = 4;
+    if (weight_grid_size < 12) {
+        weight_grid_w = weight_grid_sizes[weight_grid_size][0];
+        weight_grid_h = weight_grid_sizes[weight_grid_size][1];
+    }
+
     info.valid = true;
+    info.is_void_extent = false;
+    info.partition_count = partition_count;
+    info.partition_bits = (partition_count > 1) ? 10 : 0;
+    info.dual_plane = dual_plane != 0;
+    info.color_endpoint_bits = color_endpoint_bits;
+    info.weight_bits = weight_bits;
+    info.weight_grid_w = weight_grid_w;
+    info.weight_grid_h = weight_grid_h;
+    info.is_void_extent = false;
+    info.is_dual_plane = dual_plane != 0;
+    info.valid = true;
+    info.block_mode_raw = block_mode;
 
     return info;
 }
