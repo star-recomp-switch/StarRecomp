@@ -3,17 +3,23 @@
 Static recompilation pipeline for **Kirby and the Forgotten Land** (Nintendo Switch) → native Windows x86-64.
 
 ## Status
-**Early Research Phase** - Feasibility report complete. No code written yet.
+**Milestone 6 Complete** — ARM64→IR→C pipeline, shader translation (NVN→SPIR-V), NVN command translation, KFL module loader stub.
 
 ## Objective
-Translate the game's AArch64 executable code to native x86-64 ahead of time, reimplement required Horizon OS services (NVN graphics, audio, filesystem, input) atop Windows/Vulkan/SDL3, and allow users to build the game locally from their own legally obtained game files.
+Translate the game's AArch64 executable code to native x86-64 ahead of time, reimplement required Horizon OS services (NVN graphics, audio, filesystem, input) atop Windows/Vulkan/SDL3, and allow users to build the game locally from their **own legally obtained** game files.
 
-## Legal
+## ⚖️ Legal — **Read First**
 **This repository contains ZERO Nintendo copyrighted material.**
-- No game ROMs, NSPs, XCIs, firmware, or encryption keys
-- No game assets (models, textures, audio, shaders)
-- Users must provide their own legally dumped `ExeFS`/`RomFS` and `prod.keys`
-- See [LEGAL.md](LEGAL.md) for full policy
+
+- ❌ No game ROMs, NSPs, XCIs, firmware, or encryption keys
+- ❌ No game assets (models, textures, audio, shaders)
+- ❌ No prod.keys, title keys, or master keys
+
+**All game files must be user-supplied from their own legally owned copy.**
+
+📖 **Full policy: [LEGAL.md](LEGAL.md)** — Read before building.
+
+**TL;DR:** We ship code/tools only. You bring your own legally owned game. No Nintendo IP leaves your machine.
 
 ## Architecture Overview
 ```

@@ -5,69 +5,88 @@ Create a static recompilation pipeline for *Kirby and the Forgotten Land* (Ninte
 
 ## Milestones
 
-### M1: Foundation (Months 1-3) ✅ PLANNED
-- [ ] CMake project setup (C++20, MSVC/Clang)
-- [ ] SwitchRecomp `numeric.h` integration
-- [ ] Capstone AArch64 disassembler
-- [ ] Basic IR definition & JSON serialization
-- [ ] IR → C codegen (integer instructions)
-- [ ] Unit tests + CI (Windows MSVC + Clang)
+### M1: Foundation ✅ COMPLETE
+- [x] CMake project setup (C++20, MSVC/Clang/Zig cc)
+- [x] SwitchRecomp `numeric.h` integration
+- [x] Capstone AArch64 disassembler
+- [x] Basic IR definition & JSON serialization
+- [x] IR → C codegen (integer + float + SIMD instructions)
+- [x] Unit tests + CI (Windows MSVC + Clang)
 
-### M2: NSO Loading & Control Flow (Months 3-5) ✅ PLANNED
-- [ ] NSO parser (headers, sections, relocations, LZ4)
-- [ ] NCA extractor (with prod.keys)
-- [ ] Guest memory manager (4GB, W^X)
-- [ ] Control flow recovery (jump tables, vtables)
-- [ ] Unicorn-assisted indirect branch resolution
-- [ ] E2E test: SKC NSO → C → native
+### M2: NSO Loading & Control Flow ✅ COMPLETE
+- [x] NSO parser (headers, sections, relocations, LZ4)
+- [x] NCA extractor (with prod.keys)
+- [x] Guest memory manager (4GB, W^X)
+- [x] Control flow recovery (jump tables, vtables, indirect branches)
+- [x] Unicorn-assisted indirect branch resolution (BLR/BR)
+- [x] E2E test: AddImm, Call, FloatAdd, FCmp, FP64, FP Misc, FP Round
 
-### M3: HLE Service Framework (Months 5-8) ✅ PLANNED
-- [ ] Service registry
-- [ ] `sm:` Service Manager
-- [ ] `fs:` Filesystem (RomFS/ExeFS)
-- [ ] `am:` Application Manager
-- [ ] `time:` / `set:` System services
-- [ ] `hid:` Input (SDL3)
-- [ ] Threading SVCs
+### M3: HLE Service Framework ✅ COMPLETE
+- [x] Service registry
+- [x] `sm:` Service Manager
+- [x] `fs:` Filesystem (RomFS/ExeFS loaders)
+- [x] `am:` Application Manager (stub)
+- [x] `time:` / `set:` System services
+- [x] `hid:` Input (SDL3)
+- [x] Threading SVCs (create_thread, join, sleep)
 
-### M4: NVN Shader Translation (Months 8-12) ✅ PLANNED
-- [ ] Maxwell bytecode parser
-- [ ] SPIR-V generator (Ryujinx nxnative)
-- [ ] Shader reflection & resource bindings
-- [ ] Pipeline cache generation (install-time)
-- [ ] Variant preparation
+### M4: NVN Shader Translation ✅ COMPLETE (Milestone 5)
+- [x] Maxwell bytecode parser
+- [x] SPIR-V generator (Ryujinx nxnative adaptation)
+- [x] Shader reflection & resource bindings
+- [x] Pipeline cache generation (install-time)
+- [x] Variant preparation
 
-### M5: NVN → Vulkan Runtime (Months 10-16) ✅ PLANNED
-- [ ] Command buffer parsing (Maxwell FIFO)
-- [ ] Resource management (textures, buffers, samplers)
-- [ ] PSO mapping
-- [ ] Draw/dispatch translation
-- [ ] Synchronization (fences, semaphores)
-- [ ] Compute pipeline support
-- [ ] VMA integration
+### M5: NVN → Vulkan Runtime ✅ COMPLETE (Milestone 6)
+- [x] Command buffer parsing (Maxwell FIFO)
+- [x] Resource management (textures, buffers, samplers, shaders)
+- [x] PSO mapping (pipeline creation from shader reflection)
+- [x] Draw/dispatch translation (DRAW_ARRAYS, DRAW_ELEMENTS, DISPATCH)
+- [x] Synchronization (barriers, events, fences, semaphores, queries)
+- [x] Compute pipeline support
+- [x] VMA integration (Vulkan Memory Allocator)
+- [x] Descriptor set management + dynamic updates
+- [x] Generator integration: CommandBufferParser + NVN replay C++ generation
 
-### M6: Audio HLE (Months 12-15) ✅ PLANNED
-- [ ] `audren:u` Audio Renderer
-- [ ] `audout:u` Audio Output (SDL3)
-- [ ] `hwopus:` Opus Decoder
-- [ ] Buffer event handling
+### M8: KFL Module Loader ⬜ STUBBED (Milestone 8)
+- [x] ExeFS directory parser (directory-based loading)
+- [x] KflModuleLoader skeleton (load_exefs, get_modules)
+- [x] Module type identification (main, rtld, sdk, subsdk0-2, dynsys, dynaudio, dyngfx, dynnvn)
+- [ ] Real ExeFS file parser (single-file ExeFS container)
+- [ ] Module dependency resolution & load ordering
+- [ ] NSO relocation processing
+- [ ] Module-specific NVN command handling (color LUT, depth clamp)
 
-### M7: Kirby Forgotten Land (Months 14-24+) ✅ PLANNED
-- [ ] KFL NSO modules support
-- [ ] Game-specific NVN commands
-- [ ] Color LUT, depth clamp fixes
+### Remaining Milestones
+
+### M6: Audio HLE 🔄 NEXT
+- [ ] `audren:u` Audio Renderer HLE
+- [ ] `audout:u` Audio Output (SDL3 backend)
+- [ ] `hwopus:` Opus Decoder (libopus)
+- [ ] Buffer event handling & scheduling
+- [ ] Audio sink integration (SDL3 Audio)
+
+### M7: ASTC Texture Decoding 🔄 NEXT
+- [ ] ASTC LDR decoder (4x4 through 12x12 blocks)
+- [ ] ASTC → BC7 transcoding at upload time
+- [ ] BC7 encoder (Mode 6, RGB+A)
+- [ ] Integration with NVN texture upload pipeline
+
+### M7: Kirby Forgotten Land (Months 14-24+)
+- [ ] Game-specific NVN commands (color LUT, depth clamp, framebuffer sRGB)
 - [ ] Save data (DISF/DPFS)
-- [ ] Performance optimization
-- [ ] 120 FPS mode
+- [ ] Performance optimization (shader caching, PSO caching)
+- [ ] 120 FPS mode (frame pacing)
 
 ## Success Criteria per Milestone
 Each milestone must have:
-- [ ] Automated tests passing
-- [ ] Documentation updated (ARCHITECTURE.md, RESEARCH.md)
-- [ ] Code review completed
-- [ ] No known critical bugs blocking next milestone
+- [x] Automated tests passing
+- [x] Documentation updated (ARCHITECTURE.md, RESEARCH.md)
+- [x] Code review completed
+- [x] No known critical bugs blocking next milestone
 
 ## Risk Mitigation
-- **Legal**: Zero game code in repo; provenance.toml for user inputs
+- **Legal**: Zero game code in repo; provenance.toml for user inputs; LEGAL.md + NOTICE
 - **Technical**: Validate against Super Kirby Clash at each graphics milestone
-- **Schedule**: Parallelize M4/M5 where possible; M3 services can be stubbed initially
+- **Schedule**: M6 (Audio) + M7 (ASTC) can be parallelized
+- **Legal compliance**: LEGAL.md, NOTICE, provenance.toml, zero game assets in repo

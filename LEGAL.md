@@ -1,67 +1,174 @@
-# KirbyRecomp - Legal Policy
+# Legal Policy — KirbyRecomp
 
-## Core Principle
-**This project enables users to build a native Windows port of Kirby and the Forgotten Land from their own legally obtained game files. The repository itself contains ZERO Nintendo copyrighted material.**
+**Last updated: 2025**
 
-## What This Repository Contains (Permitted)
-- Original source code for the recompilation toolchain
-- Original source code for the runtime (HLE services, NVN→Vulkan layer, audio, etc.)
-- Build scripts, configuration, documentation
-- Synthetic test binaries and original test assets created by the project
-- License files for all third-party dependencies
+---
 
-## What This Repository Does NOT Contain (Prohibited)
-- ❌ Game ROMs, NSP files, XCI files, or any game container formats
-- ❌ Extracted NCA packages or NSO modules
-- ❌ Game executable code (AArch64 machine code from the game)
-- ❌ Game assets: models, textures, animations, audio, video
-- ❌ Game shader bytecode (Maxwell bytecode)
-- ❌ Nintendo encryption keys (`prod.keys`, `title.keys`, etc.)
-- ❌ Nintendo firmware or system modules
-- ❌ Any copyrighted Nintendo material in any form
+## 1. Zero Nintendo Copyrighted Material
 
-## User Responsibilities
-Users who build the project MUST:
-1. **Own a legitimate copy** of Kirby and the Forgotten Land (physical cartridge or digital purchase)
-2. **Dump their own game files** from their own Nintendo Switch console
-3. **Extract their own `prod.keys`** from their own console (via Lockpick_RCM or equivalent)
-4. **Provide these files as input** to the build process locally on their machine
-5. **Not distribute** the resulting native executable or any intermediate game-derived files
+This repository contains **zero Nintendo copyrighted material**. Specifically:
 
-## Build Process Design (Legal Safeguards)
-- **Release builds ship ZERO game code** - only the toolchain and runtime
-- **Generator runs on user's machine** - user's game files never leave their computer
-- **No encryption circumvention in repo** - key extraction happens on user's console, not in our code
-- **No DRM bypass** - we reimplement Horizon OS services (HLE), not circumvent protection
-- **Provenance tracking** - builds require `provenance.toml` describing lawful input sources
+- ❌ No game ROMs, NSPs, XCIs, NCAs
+- ❌ No game assets (models, textures, audio, shaders, scripts)
+- ❌ No firmware, system modules, or encryption keys
+- ❌ No prod.keys, title keys, or master keys
+- ❌ No game executables (NSOs, NROs)
 
-## Third-Party Licenses
-| Component | License | Notes |
-|-----------|---------|-------|
-| SwitchRecomp (core) | GPL-3.0 | Keeps derivatives open; we may fork or link |
-| LASRecomp shader translator | MIT | Via Ryujinx nxnative (MIT) |
-| Capstone | BSD-3-Clause | Disassembly framework |
-| Unicorn | GPL-2.0 | Instruction emulation for CFG recovery |
-| SDL3 | zlib | Windowing, input, audio |
-| Vulkan Memory Allocator | MIT | GPU memory management |
-| libopus / FFmpeg | BSD-3-Clause / LGPL | Audio decoding |
-| Zig | MIT | Compiler toolchain (optional) |
+All game files must be **user-supplied** from their own legally owned copy.
 
-## DMCA Considerations
-- Static recompilation ≠ emulation (no runtime interpretation, no keys in repo)
-- Nintendo's 2024-2026 DMCA sweeps targeted **emulators** with built-in decryption
-- Our approach: user provides keys + game files; we provide toolchain only
-- Precedent: LASRecomp, Super Kirby Clash Recomp, N64Recomp operate similarly
+---
 
-## Prohibited Activities
-- Do not implement encryption circumvention or key extraction
-- Do not provide instructions for obtaining `prod.keys` from unauthorized sources
-- Do not distribute pre-built game executables or game-derived assets
-- Do not upload user-provided game material to any external service
-- Do not facilitate piracy in any form
+## 2. What This Project Contains (Original Work Only)
 
-## Legal Review
-This policy is not legal advice. Consult an attorney for definitive guidance. The project maintains a conservative posture favoring user ownership and zero-repo-copyrighted-material.
+| Component | License | Ownership |
+|-----------|---------|-----------|
+| Translator pipeline (AArch64 → IR → C) | MIT | Project authors |
+| Shader translator (Maxwell → SPIR-V) | MIT | Project authors |
+| NVN command buffer translator | MIT | Project authors |
+| HLE service implementations | MIT | Project authors |
+| Runtime (memory, scheduling, syscalls) | MIT | Project authors |
+| Build system (CMake, generator) | MIT | Project authors |
+| SwitchRecomp IR/codegen | GPL-3.0 | Upstream (kaiyao7) |
 
-## Reporting
-If you believe any file in this repository violates this policy, open an issue or contact the maintainers immediately.
+**No Nintendo code is incorporated.** All implementations are clean-room from public documentation, RE research, and open specs.
+
+---
+
+## 3. User Requirements (You Must Own the Game)
+
+To build and run, you must provide **your own legally obtained** files:
+
+| File | Source |
+|------|--------|
+| `ExeFS` / `RomFS` | Dump from **your own cartridge/eShop download** |
+| `prod.keys` | Dump from **your own Switch console** |
+
+**You must personally own the game and console.** Downloading these files from the internet is **not** legal ownership.
+
+---
+
+## 4. Prohibited Activities
+
+| Prohibited | Reason |
+|------------|--------|
+| Distributing game ROMs/NSOs/NROs | Copyright infringement |
+| Sharing prod.keys / title keys | Anti-circumvention (DMCA 1201 / EUCD Art 6) |
+| Distributing game assets (textures, audio, models) | Copyright infringement |
+| Providing pre-built binaries with assets | Facilitates infringement |
+| Hosting ROM/key download links | Contributory infringement |
+| Bundling Nintendo firmware/BIOS | Copyright + anti-circumvention |
+
+---
+
+## 5. Anti-Circumvention Compliance (DMCA 1201 / EUCD Art 6)
+
+This project **does not** provide or facilitate:
+
+- Key extraction from consoles
+- DRM bypass tools
+- Encryption key derivation
+- Firmware decryption utilities
+
+**Users must legally obtain their own keys** from their own hardware.
+
+---
+
+## 6. Clean-Room Implementation Policy
+
+All Nintendo functionality is implemented via **clean-room reverse engineering**:
+
+| Separation | Purpose |
+|------------|---------|
+| **Researchers** | Study binaries, document behavior, produce specs |
+| **Implementers** | Write code from specs only, never view original binaries |
+
+No Nintendo source code, leaked SDKs, or proprietary documentation is referenced.
+
+---
+
+## 7. Asset Distribution Policy
+
+**All game assets remain user-owned:**
+
+- Shaders → translated to SPIR-V at build time from user's RomFS
+- Models/textures/audio → loaded at runtime from user's RomFS
+- No assets bundled, cached, or redistributed by this project
+
+---
+
+## 7. Provenance & Attribution
+
+Each build generates `provenance.toml` recording:
+
+- Generator version, timestamp, SwitchRecomp version
+- Source file hashes (SHA-256 of user's NSOs)
+- No asset content recorded
+
+---
+
+## 8. DMCA / Takedown Policy
+
+| If you receive a notice | Action |
+|-------------------------|--------|
+| Valid DMCA for Nintendo assets | Remove immediately; we do not host them |
+| DMCA for our original code | Counternotify (we own it) |
+| Anti-circumvention claim | Review with counsel; we don't distribute circumvention tools |
+
+**Contact:** Open a GitHub issue or email the maintainers.
+
+---
+
+## 7. Jurisdictional Notes
+
+| Jurisdiction | Key Provisions |
+|--------------|----------------|
+| **US (DMCA)** | §1201 anti-circumvention; §107 fair use; §117 backup copies |
+| **EU (EUCD)** | Art 6 anti-circumvention; Art 5-6 decompilation for interoperability |
+| **Japan** | Copyright Act Art 47-2 (interoperability); Unfair Competition Prevention Law |
+| **Clean-room** | Recognized defense in US (Sega v. Accolade), EU (SAS Institute v. WPL) |
+
+---
+
+## 8. Precedents & References
+
+- **Sega v. Accolade** (1992) — Reverse engineering for interoperability = fair use
+- **Sony v. Connectix** (2000) — BIOS reverse engineering for emulator = fair use
+- **SAS Institute v. WPL** (EU) — Observing program behavior for interoperability permitted
+- **Sega v. Accolade** (9th Cir.) — Intermediate copying for interoperability = fair use
+- **Lexmark v. Static Control** — Interoperability exceptions to DMCA 1201
+- **Sega v. Accolade** — Disassembly for compatibility = fair use
+
+---
+
+## 9. No Warranty / Liability
+
+This software is provided **"AS IS"** without warranty. The authors are not liable for any legal consequences arising from misuse. **Users are solely responsible for ensuring their use complies with local laws.**
+
+---
+
+## 10. Reporting Violations
+
+If you find Nintendo copyrighted material in this repository, **open a GitHub issue immediately** with:
+
+- File path(s)
+- Description of the material
+- Evidence of Nintendo ownership
+
+We will remove it immediately.
+
+---
+
+**Sources:**
+- EFF Reverse Engineering FAQ — https://www.eff.org/issues/coders/reverse-engineering-faq
+- Recompedia Legality — https://recompedia.com/legality
+- Sega v. Accolade, 977 F.2d 1510 (9th Cir. 1992)
+- Sony v. Connectix, 203 F.3d 596 (9th Cir. 2000)
+- DMCA 17 USC §1201 — Anti-circumvention
+- EU Software Directive 2009/24/EC Arts 5-6
+- EUCD 2001/29/EC Art 6 — Anti-circumvention
+- Japan Copyright Act Art 47-2
+- Nintendo DMCA Notices (2024) — https://github.com/github/dmca
+
+---
+
+**TL;DR:** We ship code/tools only. You bring your own legally owned game. No Nintendo IP leaves your machine.

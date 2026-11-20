@@ -1,0 +1,79 @@
+KirbyRecomp — Static Recompilation Pipeline
+===========================================
+
+Copyright (c) 2025 KirbyRecomp Contributors
+
+This project is licensed under the MIT License, except where noted below.
+
+---
+
+## Third-Party Components
+
+### SwitchRecomp (GPL-3.0)
+- Source: https://github.com/kaiyao7/SwitchRecomp
+- License: GPL-3.0-or-later
+- Used for: IR definition, codegen, numeric layer, translator core
+- NOTE: GPL-3.0 components require derivative works to be GPL-3.0 compatible
+
+### LASRecomp / Ryujinx nxnative (MIT)
+- Source: https://github.com/peiikai/LASRecomp
+- License: MIT
+- Used for: Shader translation reference, NVN command formats
+
+### envytools (MIT)
+- Source: https://github.com/envytools/envytools
+- License: MIT
+- Used for: Maxwell ISA documentation, instruction encodings
+
+### SDL3 (zlib)
+- Source: https://github.com/libsdl-org/SDL
+- License: zlib
+
+### Vulkan (Apache-2.0)
+- Source: https://github.com/KhronosGroup/Vulkan-Headers
+- License: Apache-2.0
+
+### VMA (MIT)
+- Source: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+- License: MIT
+
+### Capstone (BSD-3-Clause)
+- Source: https://github.com/capstone-engine/capstone
+- License: BSD-3-Clause
+
+### nlohmann/json (MIT)
+- Source: https://github.com/nlohmann/json
+- License: MIT
+
+### OpenSSL (Apache-2.0 / OpenSSL)
+- Source: https://www.openssl.org/
+- License: Apache-2.0 / OpenSSL
+
+### Zig cc / Clang / LLD (Apache-2.0 / LLVM)
+- Source: https://ziglang.org / https://llvm.org
+- License: Apache-2.0 with LLVM exception
+
+---
+
+## License Summary
+
+| Component | License | Compatibility |
+|-----------|---------|---------------|
+| Project code | MIT | ✅ |
+| SwitchRecomp IR/codegen | GPL-3.0 | ⚠️ Viral |
+| SwitchRecomp translator | GPL-3.0 | ⚠️ Viral |
+| LASRecomp / nxnative | MIT | ✅ |
+| envytools | MIT | ✅ |
+| SDL3 | zlib | ✅ |
+| Vulkan | Apache-2.0 | ✅ |
+| VMA | MIT | ✅ |
+| Capstone | BSD-3-Clause | ✅ |
+| nlohmann/json | MIT | ✅ |
+
+**Note:** The GPL-3.0 components (SwitchRecomp IR/codegen/translator) require the combined work to be GPL-3.0 compatible. The project's MIT-licensed code is GPL-3.0 compatible. The final binary will be GPL-3.0 due to the translator dependency.
+
+---
+
+## Nintendo Copyright Disclaimer
+
+This project contains **no Nintendo copyrighted material**. All game files (ROMs, NSOs, assets, keys) must be supplied by the user from their own legally owned copy. See LEGAL.md for full policy.
