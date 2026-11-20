@@ -98,6 +98,9 @@ private:
     };
     std::vector<DescriptorWrite> pending_descriptor_writes_;
 
+    // Descriptor set management
+    VkDescriptorSet get_or_create_descriptor_set(VkShaderStageFlags stage_flags);
+
     // ============================================================================
     // Draw Commands
     // ============================================================================

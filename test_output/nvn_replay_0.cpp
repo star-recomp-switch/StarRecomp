@@ -3,10 +3,45 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include "kirbyrecomp/nvn/command_translator.h"
+#include "kirbyrecomp/nvn/resource_manager.h"
 
-void replay_nvn_commands_0(VkCommandBuffer cmd_buffer) {
+void replay_nvn_commands_0(VkCommandBuffer cmd_buffer, kirbyrecomp::nvn::ResourceManager& resource_manager) {
     // NVN command buffer replay for D:/Claude Stuff/KirbyRecomp/test_romfs/nvn/test_commands.nvn
-    // Size: 64 bytes
-    // TODO: Implement Maxwell FIFO command translation
+    // Size: 88 bytes
+    // Parsed 4 commands
+
+    kirbyrecomp::nvn::CommandBufferTranslator translator(resource_manager.get_device(), cmd_buffer, resource_manager);
+    if (!translator.begin_command_buffer()) {
+        return;
+    }
+
+    {
+        const auto* vp = reinterpret_cast<const kirbyrecomp::nvn::CmdSetViewport*>(cmd.data.data());
+        VkViewport viewport{};
+        viewport.x = vp->x;
+        viewport.y = vp->y;
+        viewport.width = vp->width;
+        viewport.height = vp->height;
+        viewport.minDepth = vp->min_depth;
+        viewport.maxDepth = vp->max_depth;
+        vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
+    }
+    {
+        const auto* sc = reinterpret_cast<const kirbyrecomp::nvn::CmdSetScissor*>(cmd.data.data());
+        VkRect2D rect{};
+        rect.offset.x = sc->x;
+        rect.offset.y = sc->y;
+        rect.extent.width = sc->width;
+        rect.extent.height = sc->height;
+        vkCmdSetScissor(cmd_buffer, 0, 1, &rect);
+    }
+    {
+        const auto* draw = reinterpret_cast<const kirbyrecomp::nvn::CmdDrawArrays*>(cmd.data.data());
+        vkCmdDraw(cmd_buffer, draw->vertex_count, draw->instance_count, draw->first_vertex, draw->first_instance);
+    }
+    // Unhandled opcode: 4294967295
+
+    translator.end_command_buffer();
 }
 
