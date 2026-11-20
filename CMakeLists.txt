@@ -1,27 +1,113 @@
-# Set the generator and make program BEFORE project() to avoid regeneration issues
-set(CMAKE_GENERATOR "Ninja")
-set(CMAKE_MAKE_PROGRAM "/c/devkitPro/msys2/usr/bin/ninja")
-
-# Explicitly set the compilers BEFORE project() to avoid auto-detection issues
-set(CMAKE_C_COMPILER "/c/msys64/mingw64/bin/clang.exe")
-set(CMAKE_CXX_COMPILER "/c/msys64/mingw64/bin/clang++.exe")
-
 cmake_minimum_required(VERSION 3.25)
 
-# Pre-set mingw64 paths for clang BEFORE project()
-# We hardcode the mingw64 path since we know we're using it
-set(MINGW64_ROOT "/c/msys64/mingw64")
-set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
-set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0")
-set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/16.2.0/x86_64-w64-mingw32")
-message(STATUS "Found mingw64: ${MINGW64_ROOT}")
+# Allow overriding generator and make program from command line
+if(NOT CMAKE_GENERATOR)
+  set(CMAKE_GENERATOR "Ninja" CACHE STRING "Generator to use" FORCE)
+endif()
+if(NOT CMAKE_MAKE_PROGRAM AND CMAKE_GENERATOR STREQUAL "Ninja")
+  # Try to find ninja in common locations
+  find_program(NINJA_EXE ninja ninja.exe
+    PATHS
+    "$ENV{MSYS64}/usr/bin"
+    "$ENV{DEVKITPRO}/msys2/usr/bin"
+    "/c/msys64/usr/bin"
+    "/c/devkitPro/msys2/usr/bin"
+    "/usr/bin"
+    NO_DEFAULT_PATH
+  )
+  if(NINJA_EXE)
+    set(CMAKE_MAKE_PROGRAM "${NINJA_EXE}" CACHE FILEPATH "Path to ninja" FORCE)
+  endif()
+endif()
+
+# Allow overriding compilers from command line or environment
+if(NOT CMAKE_C_COMPILER)
+  find_program(CLANG_EXE clang clang.exe
+    PATHS
+    "$ENV{MSYS64}/mingw64/bin"
+    "$ENV{DEVKITPRO}/msys2/mingw64/bin"
+    "/c/msys64/mingw64/bin"
+    "/c/devkitPro/msys2/mingw64/bin"
+    "/usr/bin"
+    NO_DEFAULT_PATH
+  )
+  if(CLANG_EXE)
+    set(CMAKE_C_COMPILER "${CLANG_EXE}" CACHE FILEPATH "C compiler" FORCE)
+  endif()
+endif()
+if(NOT CMAKE_CXX_COMPILER)
+  find_program(CLANGXX_EXE clang++ clang++.exe
+    PATHS
+    "$ENV{MSYS64}/mingw64/bin"
+    "$ENV{DEVKITPRO}/msys2/mingw64/bin"
+    "/c/msys64/mingw64/bin"
+    "/c/devkitPro/msys2/mingw64/bin"
+    "/usr/bin"
+    NO_DEFAULT_PATH
+  )
+  if(CLANGXX_EXE)
+    set(CMAKE_CXX_COMPILER "${CLANGXX_EXE}" CACHE FILEPATH "C++ compiler" FORCE)
+  endif()
+endif()
+
+# Detect mingw64 paths from compiler location, with fallback to known locations
+if(CMAKE_CXX_COMPILER AND EXISTS "${CMAKE_CXX_COMPILER}")
+  get_filename_component(CLANG_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  get_filename_component(MINGW64_ROOT "${CLANG_BIN_DIR}" DIRECTORY)
+  if(EXISTS "${MINGW64_ROOT}/include")
+    set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
+    # Try to detect libstdc++ version
+    file(GLOB GCC_VERSION_DIRS "${MINGW64_ROOT}/include/c++/*")
+    if(GCC_VERSION_DIRS)
+      list(SORT GCC_VERSION_DIRS)
+      list(GET GCC_VERSION_DIRS -1 LATEST_GCC_DIR)
+      get_filename_component(GCC_VERSION "${LATEST_GCC_DIR}" NAME)
+      set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}")
+      set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}/x86_64-w64-mingw32")
+    endif()
+    message(STATUS "Found mingw64: ${MINGW64_ROOT}")
+    message(STATUS "  GCC version: ${GCC_VERSION}")
+  endif()
+elseif(EXISTS "/c/msys64/mingw64/include")
+  # Fallback to MSYS2 default location (common case)
+  set(MINGW64_ROOT "/c/msys64/mingw64")
+  set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
+  file(GLOB GCC_VERSION_DIRS "${MINGW64_ROOT}/include/c++/*")
+  if(GCC_VERSION_DIRS)
+    list(SORT GCC_VERSION_DIRS)
+    list(GET GCC_VERSION_DIRS -1 LATEST_GCC_DIR)
+    get_filename_component(GCC_VERSION "${LATEST_GCC_DIR}" NAME)
+    set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}")
+    set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}/x86_64-w64-mingw32")
+  endif()
+  message(STATUS "Found mingw64 (fallback): ${MINGW64_ROOT}")
+  message(STATUS "  GCC version: ${GCC_VERSION}")
+elseif(EXISTS "/mingw64/include")
+  # Fallback to Git/MSYS2 mingw64
+  set(MINGW64_ROOT "/mingw64")
+  set(MINGW64_INCLUDE_DIR "${MINGW64_ROOT}/include")
+  file(GLOB GCC_VERSION_DIRS "${MINGW64_ROOT}/include/c++/*")
+  if(GCC_VERSION_DIRS)
+    list(SORT GCC_VERSION_DIRS)
+    list(GET GCC_VERSION_DIRS -1 LATEST_GCC_DIR)
+    get_filename_component(GCC_VERSION "${LATEST_GCC_DIR}" NAME)
+    set(MINGW64_CXX_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}")
+    set(MINGW64_CXX_ARCH_INCLUDE_DIR "${MINGW64_ROOT}/include/c++/${GCC_VERSION}/x86_64-w64-mingw32")
+  endif()
+  message(STATUS "Found mingw64 (fallback): ${MINGW64_ROOT}")
+  message(STATUS "  GCC version: ${GCC_VERSION}")
+endif()
+
 # Prevent CMake from adding system include paths as -isystem (they'd come before our -I)
 set(CMAKE_SYSTEM_INCLUDE_PATH "")
 # Use -nostdinc++ to disable clang's built-in standard include search
 # We'll manually add the libstdc++ paths and system paths in correct order
-# The order matters: libstdc++ first (for #include_next), then system includes
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+if(MINGW64_CXX_INCLUDE_DIR AND MINGW64_CXX_ARCH_INCLUDE_DIR AND MINGW64_INCLUDE_DIR)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+else()
+  message(WARNING "mingw64 include paths not fully detected; system headers may not work correctly")
+endif()
 
 project(KirbyRecomp VERSION 0.1.0 LANGUAGES CXX C)
 

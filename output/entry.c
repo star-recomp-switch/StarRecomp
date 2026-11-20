@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     // Call the entry point
     printf("Calling entry point at 0x7100574AF9...\n");
     fflush(stdout);
-    fn_main_806b560f1404(&ctx);
+    fn_main_806f11c11404(&ctx);
 
     printf("Entry point returned\n");
     return 0;
