@@ -1748,6 +1748,42 @@ VkResult ResourceManager::wait_event(VkCommandBuffer cmd_buffer, uint64_t handle
     return VK_SUCCESS;
 }
 
+// Synchronization - Query Pool Management
+uint64_t ResourceManager::create_query_pool(VkQueryType type, uint32_t count, VkQueryPipelineStatisticFlags pipeline_statistics) {
+    uint64_t handle = allocate_handle();
+
+    VkQueryPoolCreateInfo create_info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    create_info.queryType = type;
+    create_info.queryCount = count;
+    create_info.pipelineStatistics = pipeline_statistics;
+
+    VkQueryPool query_pool = VK_NULL_HANDLE;
+    VkResult result = vkCreateQueryPool(device_, &create_info, nullptr, &query_pool);
+    if (result != VK_SUCCESS) {
+        last_error_ = "vkCreateQueryPool failed: " + std::to_string(result);
+        return 0;
+    }
+
+    query_pools_[handle] = query_pool;
+    return handle;
+}
+
+void ResourceManager::destroy_query_pool(uint64_t handle) {
+    auto it = query_pools_.find(handle);
+    if (it == query_pools_.end()) return;
+
+    if (it->second != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(device_, it->second, nullptr);
+    }
+    query_pools_.erase(it);
+}
+
+std::optional<VkQueryPool> ResourceManager::get_query_pool(uint64_t handle) const {
+    auto it = query_pools_.find(handle);
+    if (it == query_pools_.end()) return std::nullopt;
+    return it->second;
+}
+
 // Submit with synchronization
 VkResult ResourceManager::submit_command_buffer(VkCommandBuffer cmd_buffer,
                                                 const std::vector<uint64_t>& wait_semaphores,

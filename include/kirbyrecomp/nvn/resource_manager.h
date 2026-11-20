@@ -495,6 +495,11 @@ public:
     VkResult reset_event(uint64_t handle);
     VkResult wait_event(VkCommandBuffer cmd_buffer, uint64_t handle, VkPipelineStageFlags stage_mask);
 
+    // Synchronization - Query Pool Management
+    uint64_t create_query_pool(VkQueryType type, uint32_t count, VkQueryPipelineStatisticFlags pipeline_statistics = 0);
+    void destroy_query_pool(uint64_t handle);
+    std::optional<VkQueryPool> get_query_pool(uint64_t handle) const;
+
     // Synchronization - Submit with synchronization
     VkResult submit_command_buffer(VkCommandBuffer cmd_buffer,
                                    const std::vector<uint64_t>& wait_semaphores,
@@ -560,6 +565,7 @@ private:
     std::unordered_map<uint64_t, FenceResource> fences_;
     std::unordered_map<uint64_t, SemaphoreResource> semaphores_;
     std::unordered_map<uint64_t, TimelineSemaphorePool> timeline_semaphore_pools_;
+    std::unordered_map<uint64_t, VkQueryPool> query_pools_;
     std::unordered_map<uint64_t, EventResource> events_;
 
     uint64_t next_handle_ = 1;

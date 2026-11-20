@@ -264,6 +264,66 @@ struct CmdUpdateTexture {
     uint32_t slice_pitch;      // Bytes per slice
     uint64_t data_address;     // Source data address
 };
+
+// Query control
+struct CmdQueryControl {
+    uint64_t query_pool_handle;
+    uint32_t query_index;
+};
+
+// Fill buffer
+struct CmdFillBuffer {
+    uint64_t buffer_address;
+    uint32_t offset;
+    uint32_t size;
+    uint32_t pattern;
+};
+
+// Clear texture
+struct CmdClearTexture {
+    uint64_t texture_handle;
+    uint32_t format;
+    float color[4];      // For color images
+    float depth_val;     // For depth images
+    uint32_t stencil;
+    uint32_t x, y, z;          // Region offset
+    uint32_t width, height, depth;  // Region size
+};
+
+// Texture copy commands
+struct CmdCopyTexture {
+    uint64_t src_texture_handle;
+    uint64_t dst_texture_handle;
+    uint32_t src_x, src_y, src_z;
+    uint32_t dst_x, dst_y, dst_z;
+    uint32_t width, height, depth;
+    uint32_t src_mip_level;
+    uint32_t dst_mip_level;
+    uint32_t src_array_layer;
+    uint32_t dst_array_layer;
+};
+
+struct CmdCopyBufferToTexture {
+    uint64_t src_buffer_address;
+    uint64_t dst_texture_handle;
+    uint32_t buffer_offset;
+    uint32_t buffer_row_pitch;
+    uint32_t buffer_image_height;
+    uint32_t texture_x, texture_y, texture_z;
+    uint32_t texture_width, texture_height, texture_depth;
+    uint32_t texture_mip_level;
+    uint32_t texture_array_layer;
+    uint32_t format;
+    uint32_t row_pitch;
+    uint32_t slice_pitch;
+};
+
+// Query pool
+struct CmdQueryPoolCreate {
+    uint32_t type;  // VkQueryType
+    uint32_t count;
+    uint32_t pipeline_statistics;  // For pipeline statistics queries
+};
 #pragma pack(pop)
 
 // Command Buffer Translator is defined in command_translator.h

@@ -702,23 +702,44 @@ bool CommandBufferTranslator::translate_set_scissor(const ParsedCommand& cmd) {
 }
 
 bool CommandBufferTranslator::translate_set_blend_state(const ParsedCommand& cmd) {
-    // Blend state is typically part of pipeline
-    // Dynamic blend constants can be set
-    last_error_ = "SET_BLEND_STATE not fully implemented (use pipeline variants)";
+    // Dynamic blend constants
+    // In NVN, blend state is usually set via pipeline, but blend constants can be dynamic
+    if (cmd.data.size() >= sizeof(float) * 4) {
+        const float* constants = reinterpret_cast<const float*>(cmd.data.data());
+        vkCmdSetBlendConstants(cmd_buffer_, constants);
+        return true;
+    }
+    last_error_ = "SET_BLEND_STATE data too small for blend constants";
     return false;
 }
 
 bool CommandBufferTranslator::translate_set_depth_stencil_state(const ParsedCommand& cmd) {
-    // Depth/stencil state is typically part of pipeline
-    // Dynamic depth bias, stencil reference can be set
-    last_error_ = "SET_DEPTH_STENCIL_STATE not fully implemented (use pipeline variants)";
+    // Dynamic depth bias and stencil reference
+    // NVN command format: depth_bias_constant, depth_bias_clamp, depth_bias_slope, stencil_reference
+    if (cmd.data.size() >= sizeof(float) * 3 + sizeof(uint32_t)) {
+        const float* data = reinterpret_cast<const float*>(cmd.data.data());
+        float depth_bias_constant = data[0];
+        float depth_bias_clamp = data[1];
+        float depth_bias_slope = data[2];
+        uint32_t stencil_reference = *reinterpret_cast<const uint32_t*>(data + 3);
+
+        vkCmdSetDepthBias(cmd_buffer_, depth_bias_constant, depth_bias_clamp, depth_bias_slope);
+        vkCmdSetStencilReference(cmd_buffer_, VK_STENCIL_FACE_FRONT_BIT, stencil_reference);
+        vkCmdSetStencilReference(cmd_buffer_, VK_STENCIL_FACE_BACK_BIT, stencil_reference);
+        return true;
+    }
+    last_error_ = "SET_DEPTH_STENCIL_STATE data too small";
     return false;
 }
 
 bool CommandBufferTranslator::translate_set_rasterizer_state(const ParsedCommand& cmd) {
-    // Rasterizer state is typically part of pipeline
-    // Dynamic line width can be set
-    last_error_ = "SET_RASTERIZER_STATE not fully implemented (use pipeline variants)";
+    // Dynamic line width
+    if (cmd.data.size() >= sizeof(float)) {
+        float line_width = *reinterpret_cast<const float*>(cmd.data.data());
+        vkCmdSetLineWidth(cmd_buffer_, line_width);
+        return true;
+    }
+    last_error_ = "SET_RASTERIZER_STATE data too small for line width";
     return false;
 }
 
@@ -848,22 +869,44 @@ bool CommandBufferTranslator::translate_copy_buffer_region(const ParsedCommand& 
 }
 
 bool CommandBufferTranslator::translate_copy_texture(const ParsedCommand& cmd) {
-    // Texture copy - would need proper image copy info
-    last_error_ = "COPY_TEXTURE not fully implemented";
+    // Texture copy - full texture copy
+    if (cmd.data.size() < sizeof(CmdCopyTexture)) {
+        last_error_ = "COPY_TEXTURE command data too small";
+        return false;
+    }
+    // For now, delegate to copy_texture_region with full image
+    // In a full implementation, this would need proper CmdCopyTexture structure
+    last_error_ = "COPY_TEXTURE not fully implemented - use COPY_TEXTURE_REGION";
     return false;
 }
 
 bool CommandBufferTranslator::translate_copy_texture_region(const ParsedCommand& cmd) {
+    // Texture region copy - using CmdCopyTextureRegion
+    if (cmd.data.size() < sizeof(CmdCopyTexture)) {
+        last_error_ = "COPY_TEXTURE_REGION command data too small";
+        return false;
+    }
+    // Implementation would use vkCmdCopyImage with CmdCopyTexture region info
     last_error_ = "COPY_TEXTURE_REGION not fully implemented";
     return false;
 }
 
 bool CommandBufferTranslator::translate_copy_buffer_to_texture(const ParsedCommand& cmd) {
+    if (cmd.data.size() < sizeof(CmdCopyBufferToTexture)) {
+        last_error_ = "COPY_BUFFER_TO_TEXTURE command data too small";
+        return false;
+    }
+    // Similar to translate_update_texture but with region info
     last_error_ = "COPY_BUFFER_TO_TEXTURE not fully implemented";
     return false;
 }
 
 bool CommandBufferTranslator::translate_copy_texture_to_buffer(const ParsedCommand& cmd) {
+    if (cmd.data.size() < sizeof(CmdCopyTexture)) {
+        last_error_ = "COPY_TEXTURE_TO_BUFFER command data too small";
+        return false;
+    }
+    // Image to buffer copy using vkCmdCopyImageToBuffer
     last_error_ = "COPY_TEXTURE_TO_BUFFER not fully implemented";
     return false;
 }
@@ -2226,13 +2269,23 @@ bool CommandBufferTranslator::translate_update_texture(const ParsedCommand& cmd)
 }
 
 bool CommandBufferTranslator::translate_fill_buffer(const ParsedCommand& cmd) {
-    // Fill buffer with a pattern
-    last_error_ = "FILL_BUFFER not implemented";
+    if (cmd.data.size() < sizeof(CmdFillBuffer)) {
+        last_error_ = "FILL_BUFFER command data too small";
+        return false;
+    }
+    // Fill buffer with a pattern - vkCmdFillBuffer
+    // Would need CmdFillBuffer structure with buffer, offset, size, and pattern
+    last_error_ = "FILL_BUFFER not fully implemented";
     return false;
 }
 
 bool CommandBufferTranslator::translate_clear_texture(const ParsedCommand& cmd) {
-    // Clear texture - could use vkCmdClearColorImage
+    if (cmd.data.size() < sizeof(CmdClearTexture)) {
+        last_error_ = "CLEAR_TEXTURE command data too small";
+        return false;
+    }
+    // Clear texture using vkCmdClearColorImage or vkCmdClearDepthStencilImage
+    // Would need CmdClearTexture structure with texture handle, color/depth value, region
     last_error_ = "CLEAR_TEXTURE not fully implemented";
     return false;
 }
@@ -2281,35 +2334,98 @@ bool CommandBufferTranslator::translate_barrier(const ParsedCommand& cmd) {
 
 bool CommandBufferTranslator::translate_event_signal(const ParsedCommand& cmd) {
     // Event signaling - requires VkEvent
-    last_error_ = "EVENT_SIGNAL not fully implemented";
-    return false;
+    if (cmd.data.size() < sizeof(uint64_t)) {
+        last_error_ = "EVENT_SIGNAL command data too small";
+        return false;
+    }
+    uint64_t event_handle = *reinterpret_cast<const uint64_t*>(cmd.data.data());
+    auto event_opt = resource_manager_.get_event(event_handle);
+    if (!event_opt || !*event_opt) {
+        last_error_ = "Event not found: " + std::to_string(event_handle);
+        return false;
+    }
+    VkEvent event = (*event_opt)->event;
+    vkCmdSetEvent(cmd_buffer_, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+    return true;
 }
 
 bool CommandBufferTranslator::translate_event_wait(const ParsedCommand& cmd) {
     // Event waiting
-    last_error_ = "EVENT_WAIT not fully implemented";
-    return false;
+    if (cmd.data.size() < sizeof(uint64_t)) {
+        last_error_ = "EVENT_WAIT command data too small";
+        return false;
+    }
+    uint64_t event_handle = *reinterpret_cast<const uint64_t*>(cmd.data.data());
+    auto event_opt = resource_manager_.get_event(event_handle);
+    if (!event_opt || !*event_opt) {
+        last_error_ = "Event not found: " + std::to_string(event_handle);
+        return false;
+    }
+    VkEvent event = (*event_opt)->event;
+    vkCmdWaitEvents(cmd_buffer_, 1, &event,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                    0, nullptr, 0, nullptr, 0, nullptr);
+    return true;
 }
 
 bool CommandBufferTranslator::translate_query_begin(const ParsedCommand& cmd) {
-    last_error_ = "QUERY_BEGIN not implemented";
-    return false;
+    // Query begin - requires VkQueryPool
+    if (cmd.data.size() < sizeof(CmdQueryControl)) {
+        last_error_ = "QUERY_BEGIN command data too small";
+        return false;
+    }
+    const CmdQueryControl* query = cmd.get_data<CmdQueryControl>();
+    auto query_opt = resource_manager_.get_query_pool(query->query_pool_handle);
+    if (!query_opt) {
+        last_error_ = "Query pool not found: " + std::to_string(query->query_pool_handle);
+        return false;
+    }
+    VkQueryPool pool = query_opt.value();
+    vkCmdResetQueryPool(cmd_buffer_, pool, query->query_index, 1);
+    vkCmdBeginQuery(cmd_buffer_, pool, query->query_index, 0);
+    return true;
 }
 
 bool CommandBufferTranslator::translate_query_end(const ParsedCommand& cmd) {
-    last_error_ = "QUERY_END not implemented";
-    return false;
+    // Query end
+    if (cmd.data.size() < sizeof(CmdQueryControl)) {
+        last_error_ = "QUERY_END command data too small";
+        return false;
+    }
+    const CmdQueryControl* query = cmd.get_data<CmdQueryControl>();
+    auto query_opt = resource_manager_.get_query_pool(query->query_pool_handle);
+    if (!query_opt) {
+        last_error_ = "Query pool not found: " + std::to_string(query->query_pool_handle);
+        return false;
+    }
+    VkQueryPool pool = query_opt.value();
+    vkCmdEndQuery(cmd_buffer_, pool, query->query_index);
+    return true;
 }
 
 bool CommandBufferTranslator::translate_query_reset(const ParsedCommand& cmd) {
-    last_error_ = "QUERY_RESET not implemented";
-    return false;
+    // Query reset
+    if (cmd.data.size() < sizeof(CmdQueryControl)) {
+        last_error_ = "QUERY_RESET command data too small";
+        return false;
+    }
+    const CmdQueryControl* query = cmd.get_data<CmdQueryControl>();
+    auto query_opt = resource_manager_.get_query_pool(query->query_pool_handle);
+    if (!query_opt) {
+        last_error_ = "Query pool not found: " + std::to_string(query->query_pool_handle);
+        return false;
+    }
+    VkQueryPool pool = query_opt.value();
+    vkCmdResetQueryPool(cmd_buffer_, pool, query->query_index, 1);
+    return true;
 }
 
 bool CommandBufferTranslator::translate_wait_idle(const ParsedCommand& cmd) {
-    // Wait idle - not typically done in command buffer
-    last_error_ = "WAIT_IDLE not implemented in command buffer";
-    return false;
+    // Wait idle - not typically done in command buffer, but could be a host wait
+    // For command buffer, we can't actually wait on host, so this is a no-op
+    // In practice, this would be handled by host synchronization
+    return true;
 }
 
 // ============================================================================
@@ -2341,7 +2457,7 @@ bool CommandBufferTranslator::translate_unmap_memory(const ParsedCommand& cmd) {
 // Helpers
 // ============================================================================
 
-VkDescriptorSet CommandBufferTranslator::get_or_create_descriptor_set(VkShaderStageFlags stage_flags) {
+VkDescriptorSet kirbyrecomp::nvn::CommandBufferTranslator::get_or_create_descriptor_set(VkShaderStageFlags stage_flags) {
     // For now, use a simple approach: one descriptor set per pipeline
     // In a full implementation, we'd track descriptor sets per pipeline layout and stage
     if (!pipeline_state_.pipeline) {
@@ -2386,7 +2502,7 @@ VkDescriptorSet CommandBufferTranslator::get_or_create_descriptor_set(VkShaderSt
     return VK_NULL_HANDLE;
 }
 
-void CommandBufferTranslator::flush_descriptor_writes() {
+void kirbyrecomp::nvn::CommandBufferTranslator::flush_descriptor_writes() {
     if (pending_descriptor_writes_.empty()) return;
 
     // Collect all writes
@@ -2404,7 +2520,7 @@ void CommandBufferTranslator::flush_descriptor_writes() {
     pending_descriptor_writes_.clear();
 }
 
-void CommandBufferTranslator::apply_dynamic_state() {
+void kirbyrecomp::nvn::CommandBufferTranslator::apply_dynamic_state() {
     // Apply any dynamic state that hasn't been set yet
     if (!pipeline_state_.viewports.empty()) {
         vkCmdSetViewport(cmd_buffer_, 0, static_cast<uint32_t>(pipeline_state_.viewports.size()),
@@ -2417,7 +2533,7 @@ void CommandBufferTranslator::apply_dynamic_state() {
     // Sample mask requires VK_EXT_sample_mask extension - skip for now
 }
 
-void CommandBufferTranslator::apply_pipeline_state() {
+void kirbyrecomp::nvn::CommandBufferTranslator::apply_pipeline_state() {
     // Bind vertex buffers if any
     if (!pipeline_state_.vertex_buffers.empty()) {
         vkCmdBindVertexBuffers(cmd_buffer_, 0,
@@ -2440,42 +2556,42 @@ void CommandBufferTranslator::apply_pipeline_state() {
 // Resource Lookup Helpers
 // ============================================================================
 
-VkBuffer CommandBufferTranslator::get_buffer(uint64_t resource_id) const {
+VkBuffer kirbyrecomp::nvn::CommandBufferTranslator::get_buffer(uint64_t resource_id) const {
     auto opt = resource_manager_.get_buffer(resource_id);
     return (opt && *opt) ? (*opt)->buffer : VK_NULL_HANDLE;
 }
 
-VkImage CommandBufferTranslator::get_image(uint64_t resource_id) const {
+VkImage kirbyrecomp::nvn::CommandBufferTranslator::get_image(uint64_t resource_id) const {
     auto opt = resource_manager_.get_texture(resource_id);
     return (opt && *opt) ? (*opt)->image : VK_NULL_HANDLE;
 }
 
-VkImageView CommandBufferTranslator::get_image_view(uint64_t resource_id) const {
+VkImageView kirbyrecomp::nvn::CommandBufferTranslator::get_image_view(uint64_t resource_id) const {
     auto opt = resource_manager_.get_texture(resource_id);
     return (opt && *opt) ? (*opt)->default_view : VK_NULL_HANDLE;
 }
 
-VkSampler CommandBufferTranslator::get_sampler(uint64_t resource_id) const {
+VkSampler kirbyrecomp::nvn::CommandBufferTranslator::get_sampler(uint64_t resource_id) const {
     auto opt = resource_manager_.get_sampler(resource_id);
     return (opt && *opt) ? (*opt)->sampler : VK_NULL_HANDLE;
 }
 
-VkPipeline CommandBufferTranslator::get_pipeline(uint64_t pipeline_id) const {
+VkPipeline kirbyrecomp::nvn::CommandBufferTranslator::get_pipeline(uint64_t pipeline_id) const {
     auto opt = resource_manager_.get_pipeline(pipeline_id);
     return (opt && *opt) ? (*opt)->pipeline : VK_NULL_HANDLE;
 }
 
-VkPipelineLayout CommandBufferTranslator::get_pipeline_layout(uint64_t pipeline_id) const {
+VkPipelineLayout kirbyrecomp::nvn::CommandBufferTranslator::get_pipeline_layout(uint64_t pipeline_id) const {
     auto opt = resource_manager_.get_pipeline(pipeline_id);
     return (opt && *opt) ? (*opt)->layout : VK_NULL_HANDLE;
 }
 
-VkDescriptorSet CommandBufferTranslator::get_descriptor_set(uint64_t set_handle) const {
+VkDescriptorSet kirbyrecomp::nvn::CommandBufferTranslator::get_descriptor_set(uint64_t set_handle) const {
     auto opt = resource_manager_.get_descriptor_set(set_handle);
     return (opt && *opt) ? (*opt)->set : VK_NULL_HANDLE;
 }
 
-VkDescriptorPool CommandBufferTranslator::get_descriptor_pool(uint64_t pool_handle) const {
+VkDescriptorPool kirbyrecomp::nvn::CommandBufferTranslator::get_descriptor_pool(uint64_t pool_handle) const {
     const auto& pools = resource_manager_.get_descriptor_pools();
     auto it = pools.find(pool_handle);
     return (it != pools.end()) ? it->second : VK_NULL_HANDLE;
@@ -2485,12 +2601,12 @@ VkDescriptorPool CommandBufferTranslator::get_descriptor_pool(uint64_t pool_hand
 // Texture Format Helpers
 // ============================================================================
 
-bool CommandBufferTranslator::is_astc_format(uint32_t format) {
+bool kirbyrecomp::nvn::CommandBufferTranslator::is_astc_format(uint32_t format) {
     // ASTC formats are 63-90 in the NVN format enum
     return format >= 63 && format <= 90;
 }
 
-uint32_t CommandBufferTranslator::calculate_row_pitch(uint32_t format, uint32_t width) {
+uint32_t kirbyrecomp::nvn::CommandBufferTranslator::calculate_row_pitch(uint32_t format, uint32_t width) {
     // Calculate row pitch for texture formats
     // ASTC formats: 16 bytes per block, blocks are width/block_w
     if (format >= 63 && format <= 90) {
@@ -2528,7 +2644,7 @@ uint32_t CommandBufferTranslator::calculate_row_pitch(uint32_t format, uint32_t 
     return width * 4; // Default to 4 bytes per pixel
 }
 
-uint32_t CommandBufferTranslator::get_format_block_size(TextureFormat format) {
+uint32_t kirbyrecomp::nvn::CommandBufferTranslator::get_format_block_size(TextureFormat format) {
     // Return block size in bytes
     if (format >= TextureFormat::ASTC_4x4_UNORM && format <= TextureFormat::ASTC_12x12_SRGB) {
         return 16; // All ASTC blocks are 16 bytes
@@ -2549,7 +2665,7 @@ uint32_t CommandBufferTranslator::get_format_block_size(TextureFormat format) {
     return 4;
 }
 
-VkImageAspectFlags CommandBufferTranslator::get_format_aspect(VkFormat format) {
+VkImageAspectFlags kirbyrecomp::nvn::CommandBufferTranslator::get_format_aspect(VkFormat format) {
     return resource_manager_.get_format_aspect(format);
 }
 
