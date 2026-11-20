@@ -32,6 +32,8 @@ target_link_libraries(kirbyrecomp_gen PRIVATE
     sr_translator
     sr_codegen
     kirbyrecomp_nso
+    kirbyrecomp_shader
+    kirbyrecomp_kfl
     Capstone::Capstone
 )
 

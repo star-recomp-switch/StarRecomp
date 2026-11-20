@@ -51,8 +51,10 @@ public:
 private:
     bool ParseKeys();
     bool ExtractNsoModules();
+    bool LoadKflModules();
     bool ProcessModule(const NsoModule& module);
     bool TranslateShaders();
+    bool TranslateNvnCommands();
     bool WriteOutput();
     bool WriteShaders();
     bool WriteProvenance();
@@ -64,6 +66,10 @@ private:
     GeneratorOptions options_;
     std::vector<NsoModule> modules_;
     bool keys_parsed_ = false;
+
+    // Key storage
+    std::string keys_content_;
+    std::unordered_map<std::string, std::string> keys_;
 
     // Shader and pipeline cache data
     std::vector<uint32_t> pipeline_cache_data_;

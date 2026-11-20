@@ -10,9 +10,14 @@
 #include <iomanip>
 
 #include "kirbyrecomp/nso/nso.h"
+#include "kirbyrecomp/shader/shader.h"
+#include "kirbyrecomp/nvn/command_translator.h"
+#include "kirbyrecomp/nvn/resource_manager.h"
+#include "kirbyrecomp/kfl/kfl_nso.h"
 #include "switchrecomp/translator/translator.h"
 #include "switchrecomp/codegen/codegen.h"
 #include "switchrecomp/ir/ir.h"
+#include <vulkan/vulkan.h>
 
 namespace kirbyrecomp::gen {
 
@@ -28,9 +33,15 @@ bool Generator::Run() {
         return false;
     }
 
-    // Step 2: Extract and parse NSO modules
+    // Step 2: Extract and parse NSO modules using KFL module loader
     if (!ExtractNsoModules()) {
         std::cerr << "[Generator] Failed to extract NSO modules\n";
+        return false;
+    }
+
+    // Step 3 (Milestone 8): Load KFL-specific modules from ExeFS
+    if (!LoadKflModules()) {
+        std::cerr << "[Generator] Failed to load KFL modules\n";
         return false;
     }
 
@@ -48,13 +59,19 @@ bool Generator::Run() {
         return false;
     }
 
-    // Step 5: Write registration header
+    // Step 5: Translate NVN command buffers (Milestone 6)
+    if (!TranslateNvnCommands()) {
+        std::cerr << "[Generator] Failed to translate NVN commands\n";
+        return false;
+    }
+
+    // Step 6: Write registration header
     if (!WriteRegistrationHeader()) {
         std::cerr << "[Generator] Failed to write registration header\n";
         return false;
     }
 
-    // Step 6: Write output
+    // Step 7: Write output
     if (!WriteOutput()) {
         std::cerr << "[Generator] Failed to write output\n";
         return false;
@@ -66,8 +83,115 @@ bool Generator::Run() {
 
 bool Generator::ParseKeys() {
     std::cout << "[Generator] Parsing prod.keys from " << options_.keys_path << "\n";
-    // TODO: Implement prod.keys parsing
-    // This would parse the key file and derive title keys for the game
+
+    FILE* f = fopen(options_.keys_path.c_str(), "rb");
+    if (!f) {
+        std::cerr << "[Generator] Failed to open prod.keys\n";
+        return false;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (size < 0) {
+        fclose(f);
+        return false;
+    }
+
+    std::vector<uint8_t> buffer(static_cast<size_t>(size));
+    size_t read = fread(buffer.data(), 1, buffer.size(), f);
+    fclose(f);
+
+    if (read != buffer.size()) {
+        std::cerr << "[Generator] Failed to read prod.keys\n";
+        return false;
+    }
+
+    // prod.keys is a text file with lines like:
+    // key_name = hex_value
+    // We'll parse it as a simple key-value store
+    std::string content(buffer.begin(), buffer.end());
+
+    // Store the raw content for provenance
+    keys_content_ = content;
+
+    // Parse key-value pairs
+    size_t pos = 0;
+    while (pos < content.size()) {
+        // Skip whitespace
+        while (pos < content.size() && isspace(content[pos])) pos++;
+
+        if (pos >= content.size()) break;
+
+        // Check for comment
+        if (content[pos] == '#') {
+            // Skip to end of line
+            while (pos < content.size() && content[pos] != '\n') pos++;
+            continue;
+        }
+
+        // Find key
+        size_t key_start = pos;
+        while (pos < content.size() && !isspace(content[pos]) && content[pos] != '=') pos++;
+        if (pos >= content.size()) break;
+
+        std::string key = content.substr(key_start, pos - key_start);
+
+        // Skip whitespace
+        while (pos < content.size() && isspace(content[pos])) pos++;
+        if (pos >= content.size() || content[pos] != '=') continue;
+
+        pos++; // skip '='
+
+        // Skip whitespace
+        while (pos < content.size() && isspace(content[pos])) pos++;
+        if (pos >= content.size()) break;
+
+        // Find value (until newline)
+        size_t val_start = pos;
+        while (pos < content.size() && content[pos] != '\n' && content[pos] != '\r') pos++;
+        std::string value = content.substr(val_start, pos - val_start);
+
+        // Trim trailing whitespace from value
+        while (!value.empty() && isspace(value.back())) value.pop_back();
+
+        // Store in map
+        if (!key.empty()) {
+            keys_[key] = value;
+        }
+    }
+
+    std::cout << "[Generator] Parsed " << keys_.size() << " keys from prod.keys\n";
+
+    // Verify required keys exist
+    const std::vector<std::string> required_keys = {
+        "master_key_00",
+        "master_key_01",
+        "master_key_02",
+        "master_key_03",
+        "master_key_04",
+        "master_key_05",
+        "master_key_06",
+        "master_key_07",
+        "master_key_08",
+        "master_key_09",
+        "master_key_0A",
+        "master_key_0B",
+        "master_key_0C",
+        "master_key_0D",
+        "master_key_0E",
+        "master_key_0F",
+        "titlekek_source",
+        "header_key_source"
+    };
+
+    for (const auto& req : required_keys) {
+        if (keys_.find(req) == keys_.end()) {
+            std::cerr << "[Generator] Warning: Required key not found: " << req << "\n";
+        }
+    }
+
     keys_parsed_ = true;
     return true;
 }
@@ -95,6 +219,37 @@ bool Generator::ExtractNsoModules() {
     if (modules_.empty()) {
         std::cerr << "[Generator] No NSO modules found in ExeFS\n";
         return false;
+    }
+
+    return true;
+}
+
+bool Generator::LoadKflModules() {
+    std::cout << "[Generator] Loading KFL modules from ExeFS (Milestone 8)\n";
+
+    // Check if ExeFS is a directory (our test setup) or a file
+    // For now, skip KFL loading if the path is a directory (our test setup)
+    // The KFL loader expects a single ExeFS file, not a directory
+    std::string exefs_path = options_.exefs_path;
+    FILE* f = fopen(exefs_path.c_str(), "rb");
+    if (f) {
+        fclose(f);
+        // It's a file - try KFL loading
+        kirbyrecomp::kfl::KflModuleLoader kfl_loader;
+        if (!kfl_loader.load_exefs(options_.exefs_path)) {
+            std::cerr << "[Generator] Failed to load KFL ExeFS: " << kfl_loader.get_last_error() << "\n";
+            return false;
+        }
+
+        // Get all loaded modules
+        auto kfl_modules = kfl_loader.get_modules();
+        if (!kfl_modules.empty()) {
+            std::cout << "[Generator] Loaded " << kfl_modules.size() << " KFL modules\n";
+            // TODO: Add modules to modules_ list
+        }
+    } else {
+        // It's a directory (our test setup) - KFL modules would be individual NSO files
+        std::cout << "[Generator] ExeFS is a directory, skipping KFL ExeFS parser (modules already loaded via ExtractNsoModules)\n";
     }
 
     return true;
@@ -192,11 +347,200 @@ bool Generator::ProcessModule(const NsoModule& module) {
 
 bool Generator::TranslateShaders() {
     std::cout << "[Generator] Translating shaders from RomFS\n";
-    // TODO: Implement shader translation
-    // 1. Find shader bytecode in RomFS/shader/
-    // 2. Parse Maxwell bytecode
-    // 3. Translate to SPIR-V using Ryujinx nxnative adaptation
-    // 4. Generate pipeline cache
+
+    // Look for shader files in RomFS/shader/
+    std::string shader_dir = options_.romfs_path + "/shader";
+    std::string find_cmd = "dir /b \"" + shader_dir + "\" 2>nul";
+    FILE* pipe = _popen(find_cmd.c_str(), "r");
+    if (!pipe) {
+        std::cout << "[Generator] No shader directory found at " << shader_dir << "\n";
+        return true;  // Not an error, just no shaders
+    }
+
+    char buffer[1024];
+    std::vector<std::string> shader_files;
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        std::string line(buffer);
+        line.erase(line.find_last_not_of("\r\n") + 1);
+        if (!line.empty()) {
+            shader_files.push_back(shader_dir + "/" + line);
+        }
+    }
+    _pclose(pipe);
+
+    if (shader_files.empty()) {
+        std::cout << "[Generator] No shader files found in " << shader_dir << "\n";
+        return true;
+    }
+
+    std::cout << "[Generator] Found " << shader_files.size() << " shader file(s)\n";
+
+    // Initialize shader translator
+    kirbyrecomp::shader::ShaderTranslator translator;
+
+    for (size_t i = 0; i < shader_files.size(); ++i) {
+        const std::string& shader_path = shader_files[i];
+        std::cout << "[Generator] Processing shader: " << shader_path << "\n";
+
+        // Read shader file
+        FILE* f = fopen(shader_path.c_str(), "rb");
+        if (!f) {
+            std::cerr << "[Generator] Failed to open shader: " << shader_path << "\n";
+            continue;
+        }
+
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+
+        if (size < 0) {
+            fclose(f);
+            continue;
+        }
+
+        std::vector<uint8_t> shader_data(static_cast<size_t>(size));
+        size_t read = fread(shader_data.data(), 1, shader_data.size(), f);
+        fclose(f);
+
+        if (read != shader_data.size()) {
+            std::cerr << "[Generator] Failed to read shader: " << shader_path << "\n";
+            continue;
+        }
+
+        // Try to parse as NVN shader container
+        auto parsed = translator.parse_shader_container(shader_data);
+        if (!parsed) {
+            // Try parsing as raw Maxwell bytecode (assume fragment shader as default)
+            std::cout << "[Generator] NVN container parse failed, trying raw Maxwell bytecode\n";
+            parsed = translator.parse_maxwell_bytecode(shader_data, kirbyrecomp::shader::NvnShaderStage::Fragment);
+        }
+
+        if (!parsed) {
+            std::cerr << "[Generator] Failed to parse shader: " << shader_path << " - " << translator.get_last_error() << "\n";
+            continue;
+        }
+
+        // Translate to SPIR-V
+        kirbyrecomp::shader::ShaderTranslationOptions trans_opts;
+        trans_opts.optimize = true;
+        trans_opts.validate_spirv = true;
+        trans_opts.target_stage = static_cast<kirbyrecomp::shader::NvnShaderStage>(parsed->header.shader_stage);
+
+        auto spirv = translator.translate_to_spirv(*parsed, trans_opts);
+        if (!spirv) {
+            std::cerr << "[Generator] SPIR-V translation failed: " << translator.get_last_error() << "\n";
+            continue;
+        }
+
+        // Store SPIR-V in cache
+        uint64_t shader_id = static_cast<uint64_t>(i);
+        shader_spirv_cache_[shader_id] = spirv->words;
+
+        // Also store in first module (for now, all shaders go to first module)
+        if (!modules_.empty()) {
+            modules_[0].shaders[shader_id] = spirv->words;
+        }
+
+        std::cout << "[Generator] Translated shader " << i << " to SPIR-V (" << spirv->words.size() << " words)\n";
+    }
+
+    // Generate simple pipeline cache (placeholder)
+    if (!shader_spirv_cache_.empty()) {
+        pipeline_cache_data_ = {0x01, 0x00, 0x00, 0x00};  // Version 1
+        pipeline_cache_data_.insert(pipeline_cache_data_.end(),
+                                   static_cast<uint32_t>(shader_spirv_cache_.size()));
+    }
+
+    return true;
+}
+
+bool Generator::TranslateNvnCommands() {
+    std::cout << "[Generator] Translating NVN command buffers from RomFS\n";
+
+    // Look for NVN command buffer files in RomFS/nvn/
+    std::string nvn_dir = options_.romfs_path + "/nvn";
+    std::string find_cmd = "dir /b \"" + nvn_dir + "\" 2>nul";
+    FILE* pipe = _popen(find_cmd.c_str(), "r");
+    if (!pipe) {
+        std::cout << "[Generator] No NVN directory found at " << nvn_dir << "\n";
+        return true;  // Not an error, just no NVN commands
+    }
+
+    char buffer[1024];
+    std::vector<std::string> nvn_files;
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        std::string line(buffer);
+        line.erase(line.find_last_not_of("\r\n") + 1);
+        if (!line.empty()) {
+            nvn_files.push_back(nvn_dir + "/" + line);
+        }
+    }
+    _pclose(pipe);
+
+    if (nvn_files.empty()) {
+        std::cout << "[Generator] No NVN command files found in " << nvn_dir << "\n";
+        return true;
+    }
+
+    std::cout << "[Generator] Found " << nvn_files.size() << " NVN command file(s)\n";
+
+    // For now, we'll generate a placeholder NVN command replay file
+    // In a full implementation, this would:
+    // 1. Parse Maxwell FIFO commands
+    // 2. Translate to Vulkan commands
+    // 3. Generate C++ replay code
+
+    for (size_t i = 0; i < nvn_files.size(); ++i) {
+        const std::string& nvn_path = nvn_files[i];
+        std::cout << "[Generator] Processing NVN commands: " << nvn_path << "\n";
+
+        // Read NVN command file
+        FILE* f = fopen(nvn_path.c_str(), "rb");
+        if (!f) {
+            std::cerr << "[Generator] Failed to open NVN file: " << nvn_path << "\n";
+            continue;
+        }
+
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+
+        if (size < 0) {
+            fclose(f);
+            continue;
+        }
+
+        std::vector<uint8_t> nvn_data(static_cast<size_t>(size));
+        size_t read = fread(nvn_data.data(), 1, nvn_data.size(), f);
+        fclose(f);
+
+        if (read != nvn_data.size()) {
+            std::cerr << "[Generator] Failed to read NVN file: " << nvn_path << "\n";
+            continue;
+        }
+
+        // Generate NVN command replay C++ file
+        std::string replay_path = options_.output_dir + "/nvn_replay_" + std::to_string(i) + ".cpp";
+        std::ofstream out(replay_path.c_str());
+        if (!out) {
+            std::cerr << "[Generator] Failed to open NVN replay output: " << replay_path << "\n";
+            continue;
+        }
+
+        out << "// Auto-generated NVN command replay\n";
+        out << "// Generated by KirbyRecomp Generator\n\n";
+        out << "#include <vulkan/vulkan.h>\n";
+        out << "#include <vector>\n\n";
+        out << "void replay_nvn_commands_" << i << "(VkCommandBuffer cmd_buffer) {\n";
+        out << "    // NVN command buffer replay for " << nvn_path << "\n";
+        out << "    // Size: " << nvn_data.size() << " bytes\n";
+        out << "    // TODO: Implement Maxwell FIFO command translation\n";
+        out << "}\n\n";
+        out.close();
+
+        std::cout << "[Generator] Generated NVN replay: " << replay_path << "\n";
+    }
+
     return true;
 }
 

@@ -1,0 +1,35 @@
+# KirbyRecomp Provenance Information
+# Generated on: 2026-11-20 18:43:12
+
+[build]
+generator_version = "0.1.0"
+switchrecomp_version = "0.1.0"
+build_timestamp = "2026-11-20 18:43:12"
+
+[game]
+title_id = "0100B6C0115A4000"
+title_name = "Kirby and the Forgotten Land"
+region = "ALL"
+
+[source]
+exefs_path = "D:/Claude Stuff/KirbyRecomp/test_exefs"
+romfs_path = "D:/Claude Stuff/KirbyRecomp/test_romfs"
+keys_path = "D:/Claude Stuff/KirbyRecomp/test_prod.keys"
+
+[modules]
+[[modules]]
+name = "main"
+path = "D:/Claude Stuff/KirbyRecomp/test_exefs/main"
+is_main = true
+text_size = 0
+rodata_size = 0
+data_size = 0
+function_count = 1
+
+[shaders]
+count = 1
+pipeline_cache_size = 5
+
+[legal]
+disclaimer = "This file is generated for educational/research purposes. No Nintendo copyrighted code is included."
+user_must_own_game = true
