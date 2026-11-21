@@ -83,7 +83,7 @@ public:
     KflModuleLoader() = default;
     ~KflModuleLoader() = default;
 
-    // Parse ExeFS and load all modules
+    // Parse ExeFS and load all modules (auto-detects file vs directory)
     bool load_exefs(const std::string& exefs_path);
 
     // Load a specific module by type
@@ -124,17 +124,32 @@ private:
     std::array<std::unique_ptr<kirbyrecomp::nso::NsoModule>, 10> modules_;
     kirbyrecomp::nso::NsoParser nso_parser_;  // NSO parser instance
 
+    // Load from directory (test mode)
+    bool load_exefs_directory(const std::string& exefs_dir);
+
+    // Load from file (production ExeFS)
+    bool load_exefs_file(const std::string& exefs_path);
+
+    // Load NSO module from ExeFS entry
+    std::optional<kirbyrecomp::nso::NsoModule> load_nso_from_entry(const ExeFsModuleEntry& entry, const std::string& exefs_dir);
+
+    // Overload for directory mode (load from full path)
+    std::optional<kirbyrecomp::nso::NsoModule> load_nso_from_entry(const std::string& nso_path);
+
+    // Identify module type from filename
+    KflModuleType identify_module_type(const std::string& filename);
+
+    // Apply relocations for a single module
+    bool apply_relocations_for_module(const kirbyrecomp::nso::NsoModule* module, uint64_t base_address);
+
+    // Apply relocations for a single section
+    bool apply_relocations_for_section(const kirbyrecomp::nso::NsoModule* module, const kirbyrecomp::nso::Section& section, uint64_t base_address);
+
     // Parse ExeFS header
     bool parse_exefs_header(std::span<const uint8_t> buffer);
 
     // Parse ExeFS entries
     bool parse_exefs_entries(std::span<const uint8_t> buffer);
-
-    // Load NSO module from ExeFS entry
-    std::optional<kirbyrecomp::nso::NsoModule> load_nso_from_entry(const ExeFsModuleEntry& entry, const std::string& exefs_dir);
-
-    // Identify module type from filename
-    KflModuleType identify_module_type(const std::string& filename);
 };
 
 // -----------------------------------------------------------------------------
