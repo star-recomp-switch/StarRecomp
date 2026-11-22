@@ -1,3 +1,15 @@
 [submodule "vendor/switchrecomp"]
 	path = vendor/switchrecomp
 	url = https://github.com/kaiyao7/SwitchRecomp
+[submodule "vendor/vma"]
+	path = vendor/vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "vendor/opus"]
+	path = vendor/opus
+	url = https://github.com/xiph/opus.git
+[submodule "vendor/ffmpeg"]
+	path = vendor/ffmpeg
+	url = https://github.com/FFmpeg/FFmpeg.git
+[submodule "vendor/lz4"]
+	path = vendor/lz4
+	url = https://github.com/lz4/lz4.git
