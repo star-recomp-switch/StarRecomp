@@ -39,4 +39,8 @@ Thumbs.db
 *.log
 
 # Submodules (already tracked via .gitmodules)
-# vendor/ - submodules are tracked via .gitmodules
+# vendor/ - submodules are tracked via .gitmodulesExeFS/
+RomFS/
+*.bundle
+output/
+StarRecomp_push*/
