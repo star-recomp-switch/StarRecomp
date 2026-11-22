@@ -103,3 +103,6 @@ kirbyrecomp-gen --exefs path/to/ExeFS --romfs path/to/RomFS --keys path/to/prod.
 - Project code: MIT (unless incorporating GPL-3.0 SwitchRecomp components)
 - SwitchRecomp components: GPL-3.0 (keeps derivatives open)
 - No game files covered by source license
+
+## Big Thanks
+Many thanks to Claude for the assistance. Without Fable 5.2, this wouldn't have been possible!!
