@@ -1361,38 +1361,37 @@ VkFormat ResourceManager::nvn_format_to_vk(TextureFormat format) const {
         case TextureFormat::BC6H_SFLOAT: return VK_FORMAT_BC6H_SFLOAT_BLOCK;
         case TextureFormat::BC7_UNORM: return VK_FORMAT_BC7_UNORM_BLOCK;
         case TextureFormat::BC7_SRGB: return VK_FORMAT_BC7_SRGB_BLOCK;
-        // ASTC formats - TODO: Implement ASTC decoding (decode to BC or uncompressed at upload time)
-        // Requires astcenc library or pure C++ decoder
+        // ASTC formats - decoded to BC7 at upload time via ASTC decoder
         case TextureFormat::ASTC_4x4_UNORM:
-        case TextureFormat::ASTC_4x4_SRGB:
         case TextureFormat::ASTC_5x4_UNORM:
-        case TextureFormat::ASTC_5x4_SRGB:
         case TextureFormat::ASTC_5x5_UNORM:
-        case TextureFormat::ASTC_5x5_SRGB:
         case TextureFormat::ASTC_6x5_UNORM:
-        case TextureFormat::ASTC_6x5_SRGB:
         case TextureFormat::ASTC_6x6_UNORM:
-        case TextureFormat::ASTC_6x6_SRGB:
         case TextureFormat::ASTC_8x5_UNORM:
-        case TextureFormat::ASTC_8x5_SRGB:
         case TextureFormat::ASTC_8x6_UNORM:
-        case TextureFormat::ASTC_8x6_SRGB:
         case TextureFormat::ASTC_8x8_UNORM:
-        case TextureFormat::ASTC_8x8_SRGB:
         case TextureFormat::ASTC_10x5_UNORM:
-        case TextureFormat::ASTC_10x5_SRGB:
         case TextureFormat::ASTC_10x6_UNORM:
-        case TextureFormat::ASTC_10x6_SRGB:
         case TextureFormat::ASTC_10x8_UNORM:
-        case TextureFormat::ASTC_10x8_SRGB:
         case TextureFormat::ASTC_10x10_UNORM:
-        case TextureFormat::ASTC_10x10_SRGB:
         case TextureFormat::ASTC_12x10_UNORM:
-        case TextureFormat::ASTC_12x10_SRGB:
         case TextureFormat::ASTC_12x12_UNORM:
+            return VK_FORMAT_BC7_UNORM_BLOCK;
+        case TextureFormat::ASTC_4x4_SRGB:
+        case TextureFormat::ASTC_5x4_SRGB:
+        case TextureFormat::ASTC_5x5_SRGB:
+        case TextureFormat::ASTC_6x5_SRGB:
+        case TextureFormat::ASTC_6x6_SRGB:
+        case TextureFormat::ASTC_8x5_SRGB:
+        case TextureFormat::ASTC_8x6_SRGB:
+        case TextureFormat::ASTC_8x8_SRGB:
+        case TextureFormat::ASTC_10x5_SRGB:
+        case TextureFormat::ASTC_10x6_SRGB:
+        case TextureFormat::ASTC_10x8_SRGB:
+        case TextureFormat::ASTC_10x10_SRGB:
+        case TextureFormat::ASTC_12x10_SRGB:
         case TextureFormat::ASTC_12x12_SRGB:
-            // TODO: Implement ASTC decoding - decode to BC7 or RGBA at upload time
-            // For now, fall through to UNDEFINED to catch unsupported formats
+            return VK_FORMAT_BC7_SRGB_BLOCK;
         default: return VK_FORMAT_UNDEFINED;
     }
 }

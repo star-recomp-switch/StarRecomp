@@ -1,3 +1,5 @@
+set(SR_BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
+
 cmake_minimum_required(VERSION 3.25)
 
 # Allow overriding generator and make program from command line
