@@ -180,12 +180,14 @@ find_package(SDL3 REQUIRED)
 # Use wrapper for Vulkan (mingw64 provides Vulkan::Loader, we need Vulkan::Vulkan)
 include(FindVulkanWrapper)
 
+add_subdirectory(vendor/lz4)
+
 find_package(VMA REQUIRED)
 find_package(opus REQUIRED)
 find_package(FFmpeg REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(LZ4 REQUIRED)
+find_package(LZ4)
 
 # Add Windows system libraries for missing symbols
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -204,6 +206,16 @@ endif()
 # set(ASTCENC_SHARED_LIB OFF CACHE BOOL "" FORCE)
 # set(ASTCENC_STATIC_LIB ON CACHE BOOL "" FORCE)
 # FetchContent_MakeAvailable(astcenc)
+
+# VMA (Vulkan Memory Allocator) - fetch from GitHub
+include(FetchContent)
+FetchContent_Declare(
+    vma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG v3.5.0
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(vma)
 
 # Include codegen library
 add_subdirectory(src/codegen)
