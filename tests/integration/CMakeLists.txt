@@ -27,7 +27,7 @@ target_include_directories(kirbyrecomp_nso_integration_tests PRIVATE
 target_link_libraries(kirbyrecomp_nso_integration_tests PRIVATE
     kirbyrecomp_nso
     sr_common
-    Capstone::Capstone
+    capstone::capstone_static
     GTest::gtest_main
 )
 
@@ -76,7 +76,7 @@ target_link_libraries(kirbyrecomp_hle_tests PRIVATE
     kirbyrecomp_rt
     sr_common
     Vulkan::Vulkan
-    opus::opus
+    Opus::opus
     GTest::gtest_main
 )
 

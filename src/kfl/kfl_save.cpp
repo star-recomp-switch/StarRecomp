@@ -6,15 +6,67 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <filesystem>
 #include <random>
 #include <chrono>
 #include <algorithm>
 #include <openssl/aes.h>
 #include <openssl/cmac.h>
 #include <openssl/rand.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <dirent.h>
 
 namespace kirbyrecomp::kfl {
+
+// -----------------------------------------------------------------------------
+// Path utilities (replacement for std::filesystem to avoid mingw64 linking issues)
+// -----------------------------------------------------------------------------
+
+static bool path_exists(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
+static bool create_directories(const std::string& path) {
+    std::string current;
+    for (char c : path) {
+        if (c == '/' || c == '\\') {
+            if (!current.empty() && !path_exists(current)) {
+                if (mkdir(current.c_str()) != 0 && errno != EEXIST) return false;
+            }
+        }
+        current += c;
+    }
+    if (!path_exists(path)) {
+        if (mkdir(path.c_str()) != 0 && errno != EEXIST) return false;
+    }
+    return true;
+}
+
+static bool remove_file(const std::string& path) {
+    return remove(path.c_str()) == 0;
+}
+
+static std::string path_extension(const std::string& path) {
+    size_t pos = path.find_last_of('.');
+    if (pos == std::string::npos) return "";
+    return path.substr(pos);
+}
+
+static std::vector<std::string> list_directory(const std::string& path) {
+    std::vector<std::string> files;
+    DIR* dir = opendir(path.c_str());
+    if (!dir) return files;
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        files.push_back(entry->d_name);
+    }
+    closedir(dir);
+    return files;
+}
 
 // -----------------------------------------------------------------------------
 // AesCmac Implementation
@@ -109,10 +161,8 @@ bool SaveDataManager::initialize(const std::string& save_dir) {
     save_dir_ = save_dir;
 
     // Create save directory if it doesn't exist
-    std::error_code ec;
-    std::filesystem::create_directories(save_dir_, ec);
-    if (ec) {
-        last_error_ = "Failed to create save directory: " + ec.message();
+    if (!create_directories(save_dir_)) {
+        last_error_ = "Failed to create save directory: " + save_dir_;
         return false;
     }
 
@@ -265,19 +315,17 @@ bool SaveDataManager::update_save(uint64_t save_id, const std::vector<uint8_t>& 
 
 bool SaveDataManager::delete_save(uint64_t save_id) {
     std::string path = get_save_path(save_id);
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return !ec;
+    return remove_file(path);
 }
 
 std::vector<SaveMetadata> SaveDataManager::list_saves() const {
     std::vector<SaveMetadata> saves;
 
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(save_dir_, ec)) {
-        if (entry.path().extension() == ".disf") {
+    auto files = list_directory(save_dir_);
+    for (const auto& filename : files) {
+        if (path_extension(filename) == ".disf") {
             SaveMetadata meta;
-            auto data = read_disf_file(entry.path().string(), &meta);
+            auto data = read_disf_file(save_dir_ + "/" + filename, &meta);
             if (data) {
                 saves.push_back(meta);
             }

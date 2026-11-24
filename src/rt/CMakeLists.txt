@@ -25,7 +25,7 @@ target_link_libraries(kirbyrecomp_rt PUBLIC
     SDL3::SDL3
     Vulkan::Vulkan
     VMA::VMA
-    opus::opus
+    Opus::opus
     FFmpeg::FFmpeg
 )
 

@@ -102,11 +102,10 @@ endif()
 
 # Prevent CMake from adding system include paths as -isystem (they'd come before our -I)
 set(CMAKE_SYSTEM_INCLUDE_PATH "")
-# Use -nostdinc++ to disable clang's built-in standard include search
-# We'll manually add the libstdc++ paths and system paths in correct order
+# Add mingw64 include paths manually for clang (without -nostdinc++ to allow auto-linking of stdlib)
 if(MINGW64_CXX_INCLUDE_DIR AND MINGW64_CXX_ARCH_INCLUDE_DIR AND MINGW64_INCLUDE_DIR)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdinc++ -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${MINGW64_CXX_INCLUDE_DIR} -I${MINGW64_CXX_ARCH_INCLUDE_DIR} -I${MINGW64_INCLUDE_DIR}")
 else()
   message(WARNING "mingw64 include paths not fully detected; system headers may not work correctly")
 endif()
@@ -181,13 +180,21 @@ find_package(SDL3 REQUIRED)
 include(FindVulkanWrapper)
 
 add_subdirectory(vendor/lz4)
+add_subdirectory(vendor/opus)
 
 find_package(VMA REQUIRED)
-find_package(opus REQUIRED)
+# opus is now built from vendor/opus
 find_package(FFmpeg REQUIRED)
+
+# nlohmann_json from MSYS2 ucrt64
+set(nlohmann_json_DIR /c/msys64/ucrt64/lib/cmake/nlohmann_json CACHE PATH "nlohmann_json cmake dir")
 find_package(nlohmann_json REQUIRED)
+
+# OpenSSL from MSYS2 ucrt64
+set(OPENSSL_ROOT_DIR /c/msys64/ucrt64 CACHE PATH "OpenSSL root dir")
 find_package(OpenSSL REQUIRED)
-find_package(LZ4)
+
+# LZ4 is now built from vendor/lz4
 
 # Add Windows system libraries for missing symbols
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")

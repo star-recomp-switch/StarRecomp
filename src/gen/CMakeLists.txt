@@ -34,7 +34,7 @@ target_link_libraries(kirbyrecomp_gen PRIVATE
     kirbyrecomp_nso
     kirbyrecomp_shader
     kirbyrecomp_kfl
-    Capstone::Capstone
+    capstone::capstone_static
 )
 
 target_compile_features(kirbyrecomp_gen PRIVATE cxx_std_20)

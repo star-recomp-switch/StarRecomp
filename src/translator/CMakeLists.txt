@@ -20,7 +20,7 @@ target_include_directories(kirbyrecomp_translator PUBLIC
 
 target_link_libraries(kirbyrecomp_translator PUBLIC
     sr_common
-    Capstone::Capstone
+    capstone::capstone_static
 )
 
 target_compile_features(kirbyrecomp_translator PUBLIC cxx_std_20)

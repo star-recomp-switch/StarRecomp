@@ -24,13 +24,11 @@ target_compile_definitions(kirbyrecomp_nso PUBLIC KIRBYRECOMP_BUILD_NSO)
 # Link OpenSSL for SHA-256
 find_package(OpenSSL REQUIRED)
 
-# Link LZ4 for decompression
-find_package(LZ4 REQUIRED)
-
+# Link LZ4 for decompression (built from vendor/lz4)
 target_link_libraries(kirbyrecomp_nso PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
-    LZ4::LZ4
+    lz4
 )
 
 # Add mingw64 C++ standard library includes for clang

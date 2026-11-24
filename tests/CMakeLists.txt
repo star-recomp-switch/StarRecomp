@@ -37,7 +37,7 @@ target_include_directories(kirbyrecomp_nso_tests PRIVATE
 target_link_libraries(kirbyrecomp_nso_tests PRIVATE
     kirbyrecomp_nso
     sr_common
-    Capstone::Capstone
+    capstone::capstone_static
     GTest::gtest_main
 )
 
@@ -97,7 +97,7 @@ set_tests_properties(kirbyrecomp_nso_unit PROPERTIES TIMEOUT 120 LABELS "nso;int
 #     sr_platform
 #     sr_runtime
 #     nlohmann_json::nlohmann_json
-#     Capstone::Capstone
+#     capstone::capstone_static
 #     GTest::gtest_main
 # )
 
