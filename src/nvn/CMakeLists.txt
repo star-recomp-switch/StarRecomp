@@ -14,6 +14,7 @@ add_library(kirbyrecomp_nvn STATIC
     resource_manager.cpp
     command_translator.cpp
     fsr_smaa.cpp
+    bc7_encoder.cpp
 )
 
 # Find VMA
@@ -47,5 +48,6 @@ target_compile_options(kirbyrecomp_nvn PRIVATE
 install(FILES
     command_buffer.h
     resource_manager.h
+    bc7_encoder.h
     DESTINATION include/kirbyrecomp/nvn
 )
