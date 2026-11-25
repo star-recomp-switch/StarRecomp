@@ -107,3 +107,45 @@ set_tests_properties(kirbyrecomp_hle_all PROPERTIES
     TIMEOUT 120
     LABELS "hle;integration"
 )
+
+# Test target: ASTC Decoder tests
+add_executable(kirbyrecomp_astc_tests
+    test_astc.cpp
+)
+
+target_include_directories(kirbyrecomp_astc_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/nvn
+    ${SR_INCLUDE_DIR}
+)
+
+target_link_libraries(kirbyrecomp_astc_tests PRIVATE
+    kirbyrecomp_nvn
+    VMA::VMA
+    Vulkan::Vulkan
+    GTest::gtest_main
+)
+
+target_compile_features(kirbyrecomp_astc_tests PRIVATE cxx_std_20)
+
+# Add mingw64 C++ stdlib includes for clang
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND MINGW64_CXX_INCLUDE_DIR)
+    target_include_directories(kirbyrecomp_astc_tests SYSTEM PRIVATE
+        ${MINGW64_CXX_INCLUDE_DIR}
+        ${MINGW64_CXX_ARCH_INCLUDE_DIR}
+    )
+endif()
+
+# Let tests reach internal headers
+target_include_directories(kirbyrecomp_astc_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+include(GoogleTest)
+add_test(
+    NAME kirbyrecomp_astc_all
+    COMMAND $<TARGET_FILE:kirbyrecomp_astc_tests>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(kirbyrecomp_astc_all PROPERTIES
+    TIMEOUT 120
+    LABELS "astc;integration"
+)

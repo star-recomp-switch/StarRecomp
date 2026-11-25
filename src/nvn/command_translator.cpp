@@ -947,36 +947,46 @@ bool CommandBufferTranslator::translate_update_buffer(const ParsedCommand& cmd) 
 namespace astc {
 
 // ============================================================================
-// Bitstream Reader
+// Bitstream Reader (ASTC LSB-first bit order)
 // ============================================================================
 struct Bitstream {
     const uint8_t* data;
-    uint32_t bits;
-    uint32_t bit_pos;
+    size_t data_len;
+    size_t byte_pos;
+    uint8_t bit_pos;
 
-    Bitstream(const uint8_t* data_) : data(data_), bits(0), bit_pos(0) {}
-
-    void refill() {
-        if (bit_pos <= 24 && data) {
-            bits |= (static_cast<uint32_t>(data[0]) << 24) |
-                    (static_cast<uint32_t>(data[1]) << 16) |
-                    (static_cast<uint32_t>(data[2]) << 8) |
-                    static_cast<uint32_t>(data[3]);
-            data += 4;
-            bit_pos += 32;
-        }
-    }
+    Bitstream(const uint8_t* data_, size_t len = 16) : data(data_), data_len(len), byte_pos(0), bit_pos(0) {}
 
     uint32_t read(uint32_t n) {
-        if (bit_pos < n) refill();
-        uint32_t result = (bits >> (32 - n)) & ((1u << n) - 1);
-        bits <<= n;
-        bit_pos -= n;
+        uint32_t result = 0;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (byte_pos >= data_len) return result; // Out of data
+            uint32_t bit = (data[byte_pos] >> bit_pos) & 1;
+            result |= (bit << i);
+            bit_pos++;
+            if (bit_pos == 8) {
+                bit_pos = 0;
+                byte_pos++;
+            }
+        }
         return result;
     }
 
     uint32_t peek(uint32_t n) const {
-        return (bits >> (32 - n)) & ((1u << n) - 1);
+        uint32_t result = 0;
+        size_t bp = byte_pos;
+        uint8_t bt = bit_pos;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (bp >= data_len) break;
+            uint32_t bit = (data[bp] >> bt) & 1;
+            result |= (bit << i);
+            bt++;
+            if (bt == 8) {
+                bt = 0;
+                bp++;
+            }
+        }
+        return result;
     }
 };
 

@@ -55,6 +55,9 @@ private:
     bool ProcessModule(const NsoModule& module);
     bool TranslateShaders();
     bool TranslateNvnCommands();
+
+    // Helper to recursively find .bfsha files
+    static void FindBfshaFilesRecursive(const std::string& dir, std::vector<std::string>& out_files);
     bool WriteOutput();
     bool WriteShaders();
     bool WriteProvenance();
