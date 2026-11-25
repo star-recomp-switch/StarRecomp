@@ -180,7 +180,6 @@ find_package(SDL3 REQUIRED)
 include(FindVulkanWrapper)
 
 add_subdirectory(vendor/lz4)
-add_subdirectory(vendor/opus)
 
 find_package(VMA REQUIRED)
 # opus is now built from vendor/opus
@@ -193,8 +192,7 @@ find_package(nlohmann_json REQUIRED)
 # OpenSSL from MSYS2 ucrt64
 set(OPENSSL_ROOT_DIR /c/msys64/ucrt64 CACHE PATH "OpenSSL root dir")
 find_package(OpenSSL REQUIRED)
-
-# LZ4 is now built from vendor/lz4
+find_package(LZ4)
 
 # Add Windows system libraries for missing symbols
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
