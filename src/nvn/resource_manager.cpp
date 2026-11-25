@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
+// VMA implementation must be defined in exactly one translation unit
+#define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 namespace kirbyrecomp::nvn {

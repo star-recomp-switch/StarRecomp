@@ -5,7 +5,34 @@
 #include <mutex>
 #include <unordered_map>
 #include <fstream>
-#include <filesystem>
+#include <sys/stat.h>
+#include <errno.h>
+// Path utilities (replacement for std::filesystem to avoid mingw64 linking issues)
+static bool path_exists(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
+static bool create_directories(const std::string& path) {
+    std::string current;
+    for (char c : path) {
+        if (c == '/' || c == '\\') {
+            if (!current.empty() && !path_exists(current)) {
+                if (mkdir(current.c_str()) != 0 && errno != EEXIST) return false;
+            }
+        }
+        current += c;
+    }
+    if (!path_exists(path)) {
+        if (mkdir(path.c_str()) != 0 && errno != EEXIST) return false;
+    }
+    return true;
+}
+
+static std::string path_parent_path(const std::string& path) {
+    size_t pos = path.find_last_of("/\\");
+    return (pos == std::string::npos) ? "" : path.substr(0, pos);
+}
 #include <vulkan/vulkan.h>
 #include <cstring>
 #include <condition_variable>
@@ -1981,8 +2008,8 @@ private:
         }
 
         // Create directory if needed
-        std::filesystem::path cache_dir = std::filesystem::path(pipeline_cache_path_).parent_path();
-        std::filesystem::create_directories(cache_dir);
+        std::string cache_dir = path_parent_path(pipeline_cache_path_);
+        create_directories(cache_dir);
 
         // Try to load existing cache
         load_pipeline_cache();
@@ -2000,7 +2027,7 @@ private:
     }
 
     void load_pipeline_cache() {
-        if (!std::filesystem::exists(pipeline_cache_path_)) {
+        if (!path_exists(pipeline_cache_path_)) {
             return;
         }
 

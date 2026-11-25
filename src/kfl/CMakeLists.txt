@@ -27,8 +27,8 @@ target_link_libraries(kirbyrecomp_kfl PUBLIC
     kirbyrecomp_nvn
     OpenSSL::SSL
     OpenSSL::Crypto
-    LZ4::LZ4
-    opus
+    lz4
+    Opus::opus
 )
 
 # Add mingw64 C++ standard library includes for clang

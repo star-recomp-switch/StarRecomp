@@ -8,6 +8,8 @@
 #include <cstring>
 #include <ctime>
 #include <iomanip>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "kirbyrecomp/nso/nso.h"
 #include "kirbyrecomp/shader/shader.h"
@@ -348,29 +350,16 @@ bool Generator::ProcessModule(const NsoModule& module) {
 bool Generator::TranslateShaders() {
     std::cout << "[Generator] Translating shaders from RomFS\n";
 
-    // Look for shader files in RomFS/shader/
+    // Look for shader files in RomFS/shader/ recursively
     std::string shader_dir = options_.romfs_path + "/shader";
-    std::string find_cmd = "dir /b \"" + shader_dir + "\" 2>nul";
-    FILE* pipe = _popen(find_cmd.c_str(), "r");
-    if (!pipe) {
-        std::cout << "[Generator] No shader directory found at " << shader_dir << "\n";
-        return true;  // Not an error, just no shaders
-    }
 
-    char buffer[1024];
+    // Recursively find .bfsha files
     std::vector<std::string> shader_files;
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        std::string line(buffer);
-        line.erase(line.find_last_not_of("\r\n") + 1);
-        if (!line.empty()) {
-            shader_files.push_back(shader_dir + "/" + line);
-        }
-    }
-    _pclose(pipe);
+    FindBfshaFilesRecursive(shader_dir, shader_files);
 
     if (shader_files.empty()) {
         std::cout << "[Generator] No shader files found in " << shader_dir << "\n";
-        return true;
+        return true;  // Not an error, just no shaders
     }
 
     std::cout << "[Generator] Found " << shader_files.size() << " shader file(s)\n";
@@ -813,6 +802,33 @@ size_t Generator::GetTotalShaderCount() const {
         count += module.shaders.size();
     }
     return count;
+}
+
+void Generator::FindBfshaFilesRecursive(const std::string& dir, std::vector<std::string>& out_files) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return;
+
+    struct dirent* entry;
+    while ((entry = readdir(d)) != nullptr) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        std::string full_path = dir + "/" + entry->d_name;
+
+        // Check if it's a directory
+        struct stat st;
+        if (stat(full_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+            // Recurse into subdirectory
+            FindBfshaFilesRecursive(full_path, out_files);
+        } else {
+            // Check if it's a .bfsha file
+            std::string filename = entry->d_name;
+            if (filename.size() >= 6 && filename.substr(filename.size() - 6) == ".bfsha") {
+                out_files.push_back(full_path);
+            }
+        }
+    }
+    closedir(d);
 }
 
 } // namespace kirbyrecomp::gen

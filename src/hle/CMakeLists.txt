@@ -22,7 +22,7 @@ target_link_libraries(kirbyrecomp_hle PUBLIC
     kirbyrecomp_nvn
     Vulkan::Vulkan
     SDL3::SDL3
-    opus::opus
+    Opus::opus
 )
 
 target_compile_features(kirbyrecomp_hle PUBLIC cxx_std_20)
