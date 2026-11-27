@@ -5,6 +5,14 @@ Static recompilation pipeline for **Kirby and the Forgotten Land** (Nintendo Swi
 ## Status
 **Milestone 6 Complete** — ARM64→IR→C pipeline, shader translation (NVN→SPIR-V), NVN command translation, KFL module loader stub.
 
+### Recent Progress (Nov 2026)
+- ✅ **Build dependencies fixed** — CMake package names, MSYS2 paths, removed `-nostdinc++`, replaced `std::filesystem` with custom C path utils
+- ✅ **BFRES parser module** — BNTX/BRTI/_STR section parsing, CMP decompression (Zstd with custom Kirby header)
+- ✅ **ASTC decoder + BC7 encoder** — Pure C++ ASTC LDR decoder (all 2D block sizes 4×4 through 12×12), BC7 Mode 6 encoder for transcoding
+- ✅ **NVN resource manager BFRES integration** — Automatic `.cmp` decompression, texture loading with ASTC→BC7 transcoding at upload time
+- ✅ **E2E test temp file fix** — Resolved "Cannot create temporary file in C:\WINDOWS" by setting TMP/TEMP to build directory
+- ✅ **Decoder unit tests** — 5 tests validating AArch64 instruction decoding against canonical encodings
+
 ## Objective
 Translate the game's AArch64 executable code to native x86-64 ahead of time, reimplement required Horizon OS services (NVN graphics, audio, filesystem, input) atop Windows/Vulkan/SDL3, and allow users to build the game locally from their **own legally obtained** game files.
 
@@ -60,6 +68,8 @@ User Game Files (ExeFS/RomFS + prod.keys)
 │  - HLE Services (sm, fs, am, nvn,   │
 │    hid, audren, time, set, etc.)    │
 │  - NVN → Vulkan 1.3 Layer           │
+│    - BFRES texture loading          │
+│    - ASTC→BC7 transcoding           │
 │  - Audio (SDL3 + Opus)              │
 │  - Memory Manager (W^X, 4GB)        │
 └─────────────────────────────────────┘
@@ -71,6 +81,8 @@ User Game Files (ExeFS/RomFS + prod.keys)
 - **NVN Runtime**: LASRecomp reference (MIT)
 - **Build**: CMake + Zig cc (Clang/LLD) or MSVC/Clang
 - **Runtime**: C++20, SDL3, Vulkan 1.3, VMA, libopus/FFmpeg
+- **Texture**: BFRES parser (BNTX/BRTI/_STR), ASTC decoder, BC7 encoder
+- **Testing**: GoogleTest, CTest, custom decoder/E2E test suites
 
 ## Documentation
 - [RESEARCH.md](RESEARCH.md) - Comprehensive feasibility report
