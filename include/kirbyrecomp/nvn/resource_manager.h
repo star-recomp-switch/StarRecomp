@@ -387,7 +387,7 @@ struct EventResource {
 
 class ResourceManager {
 public:
-    explicit ResourceManager(VkDevice device, VkPhysicalDevice physical_device);
+    explicit ResourceManager(VkDevice device, VkPhysicalDevice physical_device, VkInstance instance = VK_NULL_HANDLE);
     ~ResourceManager();
 
     // Non-copyable, movable
@@ -415,6 +415,22 @@ public:
     void destroy_texture(uint64_t handle);
     std::optional<TextureResource*> get_texture(uint64_t handle);
     std::optional<const TextureResource*> get_texture(uint64_t handle) const;
+
+    // BFRES texture loading with ASTC->BC7 transcoding
+    struct BfresTextureLoadInfo {
+        std::string name;
+        uint32_t width;
+        uint32_t height;
+        uint32_t depth;
+        uint32_t mip_levels;
+        uint32_t array_layers;
+        uint32_t format;  // NVN/ASTC format enum value
+        const uint8_t* data;
+        uint32_t data_size;
+        std::vector<uint32_t> mip_offsets;
+        std::vector<uint32_t> mip_sizes;
+    };
+    uint64_t create_texture_from_bfres(const BfresTextureLoadInfo& info);
 
     // Sampler management
     uint64_t create_sampler(const SamplerDesc& desc);

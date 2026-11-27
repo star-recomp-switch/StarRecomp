@@ -62,6 +62,7 @@ private:
     bool WriteShaders();
     bool WriteProvenance();
     bool WriteRegistrationHeader();
+    bool WriteMainEntryPoint();
 
     std::string GetCurrentTimestamp();
     size_t GetTotalShaderCount() const;
