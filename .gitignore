@@ -39,8 +39,21 @@ Thumbs.db
 *.log
 
 # Submodules (already tracked via .gitmodules)
-# vendor/ - submodules are tracked via .gitmodulesExeFS/
+# vendor/ - submodules are tracked via .gitmodules
+ExeFS/
 RomFS/
 *.bundle
 output/
 StarRecomp_push*/
+
+# Test/extraction scripts and outputs (not for commit)
+ExtractTextures.csproj
+Program.cs
+Switch-Toolbox/
+extract_textures*.py
+extract_textures*.cs
+extracted_bfres*/
+test_all_cmp.py
+test_decompressed*.bfres
+test_lz4.c
+test_zstd.c

@@ -1,6 +1,8 @@
 // NVN Resource Manager Implementation
 
 #include "kirbyrecomp/nvn/resource_manager.h"
+#include "kirbyrecomp/nvn/astc_decoder.h"
+#include "kirbyrecomp/nvn/bc7_encoder.h"
 #include "kirbyrecomp/shader/shader.h"
 
 #include <cstring>
@@ -17,15 +19,16 @@ namespace kirbyrecomp::nvn {
 // ResourceManager Implementation
 // ============================================================================
 
-ResourceManager::ResourceManager(VkDevice device, VkPhysicalDevice physical_device)
+ResourceManager::ResourceManager(VkDevice device, VkPhysicalDevice physical_device, VkInstance instance)
     : device_(device), physical_device_(physical_device) {
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
 
-    // Initialize VMA allocator
+    // Initialize VMA allocator - let VMA load function pointers automatically
     VmaAllocatorCreateInfo allocator_info{};
     allocator_info.physicalDevice = physical_device_;
     allocator_info.device = device_;
-    allocator_info.instance = VK_NULL_HANDLE; // Will be set if available
+    allocator_info.instance = instance;
+    // Don't provide pVulkanFunctions - let VMA load them using vkGetInstanceProcAddr/DeviceProcAddr
     allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
                            VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT |
                            VMA_ALLOCATOR_CREATE_KHR_BIND_MEMORY2_BIT;
@@ -511,6 +514,313 @@ bool ResourceManager::create_texture_internal(TextureResource& resource) {
     }
 
     return true;
+}
+
+uint64_t ResourceManager::create_texture_from_bfres(const BfresTextureLoadInfo& info) {
+    // Map BFRES format to NVN format
+    TextureFormat nvn_format = static_cast<TextureFormat>(info.format);
+
+    // Determine if this is an ASTC format that needs transcoding
+    bool is_astc = false;
+    bool is_srgb = false;
+    uint32_t astc_block_w = 4;
+    uint32_t astc_block_h = 4;
+
+    switch (nvn_format) {
+        case TextureFormat::ASTC_4x4_UNORM: astc_block_w = 4; astc_block_h = 4; is_astc = true; break;
+        case TextureFormat::ASTC_5x4_UNORM: astc_block_w = 5; astc_block_h = 4; is_astc = true; break;
+        case TextureFormat::ASTC_5x5_UNORM: astc_block_w = 5; astc_block_h = 5; is_astc = true; break;
+        case TextureFormat::ASTC_6x5_UNORM: astc_block_w = 6; astc_block_h = 5; is_astc = true; break;
+        case TextureFormat::ASTC_6x6_UNORM: astc_block_w = 6; astc_block_h = 6; is_astc = true; break;
+        case TextureFormat::ASTC_8x5_UNORM: astc_block_w = 8; astc_block_h = 5; is_astc = true; break;
+        case TextureFormat::ASTC_8x6_UNORM: astc_block_w = 8; astc_block_h = 6; is_astc = true; break;
+        case TextureFormat::ASTC_8x8_UNORM: astc_block_w = 8; astc_block_h = 8; is_astc = true; break;
+        case TextureFormat::ASTC_10x5_UNORM: astc_block_w = 10; astc_block_h = 5; is_astc = true; break;
+        case TextureFormat::ASTC_10x6_UNORM: astc_block_w = 10; astc_block_h = 6; is_astc = true; break;
+        case TextureFormat::ASTC_10x8_UNORM: astc_block_w = 10; astc_block_h = 8; is_astc = true; break;
+        case TextureFormat::ASTC_10x10_UNORM: astc_block_w = 10; astc_block_h = 10; is_astc = true; break;
+        case TextureFormat::ASTC_12x10_UNORM: astc_block_w = 12; astc_block_h = 10; is_astc = true; break;
+        case TextureFormat::ASTC_12x12_UNORM: astc_block_w = 12; astc_block_h = 12; is_astc = true; break;
+        case TextureFormat::ASTC_4x4_SRGB: astc_block_w = 4; astc_block_h = 4; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_5x4_SRGB: astc_block_w = 5; astc_block_h = 4; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_5x5_SRGB: astc_block_w = 5; astc_block_h = 5; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_6x5_SRGB: astc_block_w = 6; astc_block_h = 5; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_6x6_SRGB: astc_block_w = 6; astc_block_h = 6; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_8x5_SRGB: astc_block_w = 8; astc_block_h = 5; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_8x6_SRGB: astc_block_w = 8; astc_block_h = 6; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_8x8_SRGB: astc_block_w = 8; astc_block_h = 8; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_10x5_SRGB: astc_block_w = 10; astc_block_h = 5; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_10x6_SRGB: astc_block_w = 10; astc_block_h = 6; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_10x8_SRGB: astc_block_w = 10; astc_block_h = 8; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_10x10_SRGB: astc_block_w = 10; astc_block_h = 10; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_12x10_SRGB: astc_block_w = 12; astc_block_h = 10; is_astc = true; is_srgb = true; break;
+        case TextureFormat::ASTC_12x12_SRGB: astc_block_w = 12; astc_block_h = 12; is_astc = true; is_srgb = true; break;
+        default: break;
+    }
+
+    // Create texture description
+    TextureDesc desc;
+    desc.format = is_astc ? (is_srgb ? TextureFormat::BC7_SRGB : TextureFormat::BC7_UNORM) : nvn_format;
+    desc.width = info.width;
+    desc.height = info.height;
+    desc.depth = info.depth;
+    desc.array_layers = info.array_layers;
+    desc.mip_levels = info.mip_levels;
+    desc.sample_count = 1;
+    desc.usage = static_cast<TextureUsage>(static_cast<uint32_t>(TextureUsage::ShaderResource) | static_cast<uint32_t>(TextureUsage::CopyDst));
+    desc.flags = 0;
+
+    // Create the Vulkan texture (will be BC7 format for ASTC sources)
+    uint64_t handle = create_texture(desc);
+    if (handle == 0) {
+        return 0;
+    }
+
+    auto tex_opt = get_texture(handle);
+    if (!tex_opt || !*tex_opt) {
+        return 0;
+    }
+    TextureResource* texture = *tex_opt;
+
+    // For ASTC textures, we need to decode and transcode to BC7
+    if (is_astc) {
+        // Process each mip level
+        for (uint32_t mip = 0; mip < info.mip_levels; ++mip) {
+            uint32_t mip_offset = (mip < info.mip_offsets.size()) ? info.mip_offsets[mip] : 0;
+            uint32_t mip_size = (mip < info.mip_sizes.size()) ? info.mip_sizes[mip] : 0;
+
+            if (mip_offset == 0 && mip_size == 0 && mip > 0) {
+                // No more mip data
+                break;
+            }
+
+            const uint8_t* mip_data = info.data + mip_offset;
+            if (mip_size == 0) mip_size = info.data_size;
+
+            // Calculate mip dimensions
+            uint32_t mip_width = std::max<uint32_t>(1, info.width >> mip);
+            uint32_t mip_height = std::max<uint32_t>(1, info.height >> mip);
+
+            // Decode ASTC to RGBA8, then encode to BC7
+            // Each ASTC block is 16 bytes, produces astc_block_w x astc_block_h pixels
+            uint32_t blocks_x = (mip_width + astc_block_w - 1) / astc_block_w;
+            uint32_t blocks_y = (mip_height + astc_block_h - 1) / astc_block_h;
+            uint32_t total_blocks = blocks_x * blocks_y;
+
+            // Allocate intermediate RGBA8 buffer
+            std::vector<uint8_t> rgba_buffer(mip_width * mip_height * 4);
+
+            // Decode each ASTC block
+            for (uint32_t by = 0; by < blocks_y; ++by) {
+                for (uint32_t bx = 0; bx < blocks_x; ++bx) {
+                    uint32_t block_idx = by * blocks_x + bx;
+                    if (block_idx * 16 >= mip_size) break;
+
+                    const uint8_t* block_data = mip_data + block_idx * 16;
+
+                    // Decode to RGBA8
+                    uint32_t out_x = bx * astc_block_w;
+                    uint32_t out_y = by * astc_block_h;
+                    uint32_t out_stride = mip_width * 4;
+                    uint8_t* out_ptr = &rgba_buffer[(out_y * mip_width + out_x) * 4];
+
+                    bool decoded = kirbyrecomp::nvn::astc::decode_block(
+                        block_data, astc_block_w, astc_block_h, out_ptr, out_stride
+                    );
+
+                    if (!decoded) {
+                        last_error_ = "ASTC decode failed for block " + std::to_string(block_idx) + " at mip " + std::to_string(mip);
+                        return 0;
+                    }
+                }
+            }
+
+            // Now encode RGBA8 to BC7
+            // BC7 uses 4x4 blocks
+            uint32_t bc7_blocks_x = (mip_width + 3) / 4;
+            uint32_t bc7_blocks_y = (mip_height + 3) / 4;
+            uint32_t bc7_total_blocks = bc7_blocks_x * bc7_blocks_y;
+
+            std::vector<uint8_t> bc7_buffer(bc7_total_blocks * 16);
+
+            for (uint32_t by = 0; by < bc7_blocks_y; ++by) {
+                for (uint32_t bx = 0; bx < bc7_blocks_x; ++bx) {
+                    uint32_t bc7_idx = by * bc7_blocks_x + bx;
+                    kirbyrecomp::nvn::bc7::BC7Block block;
+
+                    // Get 4x4 RGBA block from decoded buffer
+                    uint32_t src_x = bx * 4;
+                    uint32_t src_y = by * 4;
+
+                    // Extract 4x4 block (handle edge cases)
+                    uint8_t rgba_block[4][4][4];  // [y][x][rgba]
+                    for (uint32_t y = 0; y < 4; ++y) {
+                        for (uint32_t x = 0; x < 4; ++x) {
+                            uint32_t px = src_x + x;
+                            uint32_t py = src_y + y;
+                            if (px < mip_width && py < mip_height) {
+                                uint32_t idx = (py * mip_width + px) * 4;
+                                rgba_block[y][x][0] = rgba_buffer[idx + 0];
+                                rgba_block[y][x][1] = rgba_buffer[idx + 1];
+                                rgba_block[y][x][2] = rgba_buffer[idx + 2];
+                                rgba_block[y][x][3] = rgba_buffer[idx + 3];
+                            } else {
+                                // Out of bounds - use transparent black
+                                rgba_block[y][x][0] = 0;
+                                rgba_block[y][x][1] = 0;
+                                rgba_block[y][x][2] = 0;
+                                rgba_block[y][x][3] = 0;
+                            }
+                        }
+                    }
+
+                    // Flatten to 4x4 contiguous for encoder
+                    uint8_t flat_block[16 * 4];
+                    for (uint32_t y = 0; y < 4; ++y) {
+                        for (uint32_t x = 0; x < 4; ++x) {
+                            flat_block[(y * 4 + x) * 4 + 0] = rgba_block[y][x][0];
+                            flat_block[(y * 4 + x) * 4 + 1] = rgba_block[y][x][1];
+                            flat_block[(y * 4 + x) * 4 + 2] = rgba_block[y][x][2];
+                            flat_block[(y * 4 + x) * 4 + 3] = rgba_block[y][x][3];
+                        }
+                    }
+
+                    kirbyrecomp::nvn::bc7::encode_mode6(flat_block, 4, 4, 16, block);
+                    memcpy(&bc7_buffer[bc7_idx * 16], block.data, 16);
+                }
+            }
+
+            // Upload BC7 data to texture mip level
+            // We need to use a staging buffer and copy command
+            // For now, use the mapped pointer approach (requires persistent mapping)
+            // This is a simplified version - in production we'd use staging buffers
+
+            // Map the texture memory (requires persistent mapping or staging)
+            // Since we created with VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE, we need a staging buffer
+            // Let's use vmaCreateBuffer for staging
+
+            VkBufferCreateInfo staging_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            staging_info.size = bc7_buffer.size();
+            staging_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            staging_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VmaAllocationCreateInfo vma_staging_info{};
+            vma_staging_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+            vma_staging_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+            VkBuffer staging_buffer;
+            VmaAllocation staging_allocation;
+            VmaAllocationInfo staging_alloc_info;
+            VkResult result = vmaCreateBuffer(vma_allocator_, &staging_info, &vma_staging_info,
+                                               &staging_buffer, &staging_allocation, &staging_alloc_info);
+            if (result != VK_SUCCESS) {
+                last_error_ = "Failed to create staging buffer";
+                return 0;
+            }
+
+            // Copy BC7 data to staging buffer
+            memcpy(staging_alloc_info.pMappedData, bc7_buffer.data(), bc7_buffer.size());
+
+            // Submit copy command
+            VkCommandPool cmd_pool = create_command_pool(0, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+            if (cmd_pool == VK_NULL_HANDLE) {
+                vmaDestroyBuffer(vma_allocator_, staging_buffer, staging_allocation);
+                return 0;
+            }
+
+            VkCommandBufferAllocateInfo alloc_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            alloc_info.commandPool = cmd_pool;
+            alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            alloc_info.commandBufferCount = 1;
+
+            VkCommandBuffer cmd_buffer;
+            result = vkAllocateCommandBuffers(device_, &alloc_info, &cmd_buffer);
+            if (result != VK_SUCCESS) {
+                vkDestroyCommandPool(device_, cmd_pool, nullptr);
+                vmaDestroyBuffer(vma_allocator_, staging_buffer, staging_allocation);
+                return 0;
+            }
+
+            VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+            begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(cmd_buffer, &begin_info);
+
+            // Transition image layout for transfer
+            VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = texture->image;
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.baseMipLevel = mip;
+            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = info.array_layers;
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            vkCmdPipelineBarrier(cmd_buffer,
+                                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+            // Copy buffer to image
+            VkBufferImageCopy region{};
+            region.bufferOffset = 0;
+            region.bufferRowLength = 0;
+            region.bufferImageHeight = 0;
+            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            region.imageSubresource.mipLevel = mip;
+            region.imageSubresource.baseArrayLayer = 0;
+            region.imageSubresource.layerCount = info.array_layers;
+            region.imageExtent.width = mip_width;
+            region.imageExtent.height = mip_height;
+            region.imageExtent.depth = 1;
+
+            vkCmdCopyBufferToImage(cmd_buffer, staging_buffer, texture->image,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+            // Transition to shader read layout
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(cmd_buffer,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+            vkEndCommandBuffer(cmd_buffer);
+
+            // Submit and wait
+            VkSubmitInfo submit_info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &cmd_buffer;
+
+            VkFence fence;
+            VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            vkCreateFence(device_, &fence_info, nullptr, &fence);
+
+            result = vkQueueSubmit(graphics_queue_, 1, &submit_info, fence);
+            if (result == VK_SUCCESS) {
+                vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX);
+            }
+
+            vkDestroyFence(device_, fence, nullptr);
+            vkFreeCommandBuffers(device_, cmd_pool, 1, &cmd_buffer);
+            vkDestroyCommandPool(device_, cmd_pool, nullptr);
+            vmaDestroyBuffer(vma_allocator_, staging_buffer, staging_allocation);
+        }
+    } else {
+        // Non-ASTC format - direct upload (simplified)
+        // Would need similar staging buffer logic
+        last_error_ = "Non-ASTC format upload not fully implemented";
+        return 0;
+    }
+
+    return handle;
 }
 
 void ResourceManager::destroy_texture(uint64_t handle) {

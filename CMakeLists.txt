@@ -180,6 +180,7 @@ find_package(SDL3 REQUIRED)
 include(FindVulkanWrapper)
 
 add_subdirectory(vendor/lz4)
+add_subdirectory(vendor/opus)
 
 find_package(VMA REQUIRED)
 # opus is now built from vendor/opus
@@ -239,6 +240,9 @@ add_subdirectory(src/shader)
 
 # Include NVN runtime module (Milestone 6)
 add_subdirectory(src/nvn)
+
+# Include BFRES parser module (texture extraction)
+add_subdirectory(src/bfres)
 
 # Include KFL (Kirby and the Forgotten Land) module loader (Milestone 8)
 add_subdirectory(src/kfl)
