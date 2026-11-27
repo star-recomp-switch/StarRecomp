@@ -255,3 +255,49 @@ set_tests_properties(kirbyrecomp_decoder_all PROPERTIES
 set_tests_properties(kirbyrecomp_decoder_all PROPERTIES
     ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
 )
+
+# Test target: Shader Translation tests
+add_executable(kirbyrecomp_shader_tests
+    test_shader.cpp
+)
+
+target_include_directories(kirbyrecomp_shader_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/shader
+    ${SR_INCLUDE_DIR}
+)
+
+target_link_libraries(kirbyrecomp_shader_tests PRIVATE
+    kirbyrecomp_shader
+    kirbyrecomp_rt
+    sr_common
+    GTest::gtest_main
+)
+
+target_compile_features(kirbyrecomp_shader_tests PRIVATE cxx_std_20)
+
+# Add mingw64 C++ stdlib includes for clang
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND MINGW64_CXX_INCLUDE_DIR)
+    target_include_directories(kirbyrecomp_shader_tests SYSTEM PRIVATE
+        ${MINGW64_CXX_INCLUDE_DIR}
+        ${MINGW64_CXX_ARCH_INCLUDE_DIR}
+    )
+endif()
+
+# Let tests reach internal headers
+target_include_directories(kirbyrecomp_shader_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+include(GoogleTest)
+add_test(
+    NAME kirbyrecomp_shader_all
+    COMMAND $<TARGET_FILE:kirbyrecomp_shader_tests>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(kirbyrecomp_shader_all PROPERTIES
+    TIMEOUT 120
+    LABELS "shader;integration"
+)
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_shader_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
+)
