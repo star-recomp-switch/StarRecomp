@@ -192,3 +192,46 @@ set_tests_properties(kirbyrecomp_astc_bc7_all PROPERTIES
     TIMEOUT 120
     LABELS "astc;bc7;integration"
 )
+
+# Test target: AArch64 Decoder tests
+add_executable(kirbyrecomp_decoder_tests
+    ../unit/test_decoder.cpp
+)
+
+target_include_directories(kirbyrecomp_decoder_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/translator
+    ${CMAKE_SOURCE_DIR}/src/translator/decoder
+    ${SR_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../unit
+)
+
+target_link_libraries(kirbyrecomp_decoder_tests PRIVATE
+    kirbyrecomp_translator
+    sr_common
+    GTest::gtest_main
+)
+
+target_compile_features(kirbyrecomp_decoder_tests PRIVATE cxx_std_20)
+
+# Add mingw64 C++ stdlib includes for clang
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND MINGW64_CXX_INCLUDE_DIR)
+    target_include_directories(kirbyrecomp_decoder_tests SYSTEM PRIVATE
+        ${MINGW64_CXX_INCLUDE_DIR}
+        ${MINGW64_CXX_ARCH_INCLUDE_DIR}
+    )
+endif()
+
+# Let tests reach internal headers
+target_include_directories(kirbyrecomp_decoder_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+include(GoogleTest)
+add_test(
+    NAME kirbyrecomp_decoder_all
+    COMMAND $<TARGET_FILE:kirbyrecomp_decoder_tests>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(kirbyrecomp_decoder_all PROPERTIES
+    TIMEOUT 120
+    LABELS "decoder;unit"
+)
