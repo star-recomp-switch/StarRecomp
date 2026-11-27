@@ -14,6 +14,9 @@
 // Include shader reflection types (needed for PipelineDesc, ShaderModuleResource)
 #include "kirbyrecomp/shader/shader.h"
 
+// Include BFRES types for texture loading integration
+#include "kirbyrecomp/bfres/bfres.h"
+
 namespace kirbyrecomp::nvn {
 
 // ============================================================================
@@ -548,8 +551,27 @@ public:
     VkDevice device() const { return device_; }
     VkPhysicalDevice physical_device() const { return physical_device_; }
 
+    // Set graphics queue for command submission (required for texture uploads)
+    void set_graphics_queue(VkQueue queue) { graphics_queue_ = queue; }
+
     // Get last error
     const std::string& get_last_error() const { return last_error_; }
+
+    // BFRES integration
+    // Load all textures from a BFRES file (decompresses .cmp if needed, parses BNTX/BRTI/_STR)
+    struct BfresFileLoadResult {
+        std::vector<uint64_t> texture_handles;
+        std::vector<std::string> texture_names;
+        std::string error;
+        bool success = false;
+    };
+    BfresFileLoadResult load_textures_from_bfres_file(const std::string& filepath);
+
+    // Load a single BFRES texture by index
+    uint64_t load_bfres_texture_by_index(const kirbyrecomp::bfres::BfresFile& bfres, size_t index);
+
+    // Load a single BFRES texture by name
+    uint64_t load_bfres_texture_by_name(const kirbyrecomp::bfres::BfresFile& bfres, const std::string& name);
 
 private:
     VkDevice device_ = VK_NULL_HANDLE;

@@ -20,6 +20,9 @@ add_library(kirbyrecomp_nvn STATIC
 # Find VMA
 find_package(VMA REQUIRED)
 
+# Find BFRES (for texture loading integration)
+find_package(Zstd REQUIRED)
+
 target_include_directories(kirbyrecomp_nvn PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/include
@@ -28,8 +31,10 @@ target_include_directories(kirbyrecomp_nvn PUBLIC
 
 target_link_libraries(kirbyrecomp_nvn PUBLIC
     kirbyrecomp_shader
+    kirbyrecomp_bfres
     Vulkan::Vulkan
     VMA::VMA
+    zstd::libzstd_static
 )
 
 # Add shader module include directory

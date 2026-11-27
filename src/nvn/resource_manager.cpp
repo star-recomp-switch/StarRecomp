@@ -4,11 +4,14 @@
 #include "kirbyrecomp/nvn/astc_decoder.h"
 #include "kirbyrecomp/nvn/bc7_encoder.h"
 #include "kirbyrecomp/shader/shader.h"
+#include "kirbyrecomp/bfres/cmp_decompress.h"
 
 #include <cstring>
 #include <algorithm>
 #include <iostream>
 #include <set>
+#include <fstream>
+#include <vector>
 // VMA implementation must be defined in exactly one translation unit
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
@@ -2173,6 +2176,107 @@ VkResult ResourceManager::submit_command_buffer(VkCommandBuffer cmd_buffer,
         return VK_ERROR_INITIALIZATION_FAILED;
     }
     return vkQueueSubmit(queue, 1, &submit_info, fence);
+}
+
+// ============================================================================
+// BFRES Integration
+// ============================================================================
+
+ResourceManager::BfresFileLoadResult ResourceManager::load_textures_from_bfres_file(const std::string& filepath) {
+    BfresFileLoadResult result;
+
+    // Parse BFRES file (handles .cmp decompression automatically)
+    kirbyrecomp::bfres::BfresFile bfres(filepath);
+    if (!bfres.parse()) {
+        result.error = "Failed to parse BFRES: " + bfres.get_error();
+        return result;
+    }
+
+    // Load all BNTX textures
+    const auto& bntx_textures = bfres.get_bntx_textures();
+    result.texture_handles.reserve(bntx_textures.size());
+    result.texture_names.reserve(bntx_textures.size());
+
+    for (size_t i = 0; i < bntx_textures.size(); ++i) {
+        const auto& tex = bntx_textures[i];
+        auto tex_data_opt = bfres.get_bntx_texture_data(i);
+        if (!tex_data_opt) {
+            result.error = "Failed to extract texture data for index " + std::to_string(i);
+            return result;
+        }
+
+        const auto& tex_data = *tex_data_opt;
+
+        // Create BfresTextureLoadInfo from parsed data
+        BfresTextureLoadInfo info;
+        info.name = tex.name;
+        info.width = tex.width;
+        info.height = tex.height;
+        info.depth = tex.depth;
+        info.mip_levels = tex.mip_levels;
+        info.array_layers = tex.array_layers;
+        info.format = static_cast<uint32_t>(tex.format);
+        info.data = tex_data.data();
+        info.data_size = static_cast<uint32_t>(tex_data.size());
+        info.mip_offsets = tex.mip_offsets;
+        info.mip_sizes = tex.mip_sizes;
+
+        uint64_t handle = create_texture_from_bfres(info);
+        if (handle == 0) {
+            result.error = "Failed to create texture from BFRES: " + get_last_error();
+            return result;
+        }
+
+        result.texture_handles.push_back(handle);
+        result.texture_names.push_back(tex.name);
+    }
+
+    result.success = true;
+    return result;
+}
+
+uint64_t ResourceManager::load_bfres_texture_by_index(const kirbyrecomp::bfres::BfresFile& bfres, size_t index) {
+    const auto& bntx_textures = bfres.get_bntx_textures();
+    if (index >= bntx_textures.size()) {
+        last_error_ = "Texture index out of range";
+        return 0;
+    }
+
+    const auto& tex = bntx_textures[index];
+    auto tex_data_opt = bfres.get_bntx_texture_data(index);
+    if (!tex_data_opt) {
+        last_error_ = "Failed to extract texture data";
+        return 0;
+    }
+
+    const auto& tex_data = *tex_data_opt;
+
+    BfresTextureLoadInfo info;
+    info.name = tex.name;
+    info.width = tex.width;
+    info.height = tex.height;
+    info.depth = tex.depth;
+    info.mip_levels = tex.mip_levels;
+    info.array_layers = tex.array_layers;
+    info.format = static_cast<uint32_t>(tex.format);
+    info.data = tex_data.data();
+    info.data_size = static_cast<uint32_t>(tex_data.size());
+    info.mip_offsets = tex.mip_offsets;
+    info.mip_sizes = tex.mip_sizes;
+
+    return create_texture_from_bfres(info);
+}
+
+uint64_t ResourceManager::load_bfres_texture_by_name(const kirbyrecomp::bfres::BfresFile& bfres, const std::string& name) {
+    const auto& bntx_textures = bfres.get_bntx_textures();
+    for (size_t i = 0; i < bntx_textures.size(); ++i) {
+        if (bntx_textures[i].name == name) {
+            return load_bfres_texture_by_index(bfres, i);
+        }
+    }
+
+    last_error_ = "Texture not found: " + name;
+    return 0;
 }
 
 } // namespace kirbyrecomp::nvn
