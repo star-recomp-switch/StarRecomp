@@ -67,6 +67,10 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 set_tests_properties(kirbyrecomp_nso_unit PROPERTIES TIMEOUT 120 LABELS "nso;integration")
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_nso_unit PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
+)
 
 
 # -----------------------------------------------------------------------------
@@ -135,6 +139,10 @@ add_custom_target(kirbyrecomp_all_tests
 add_test(NAME kirbyrecomp_nso_all COMMAND $<TARGET_FILE:kirbyrecomp_nso_tests>)
 
 set_tests_properties(kirbyrecomp_nso_all PROPERTIES TIMEOUT 120 LABELS "nso;integration")
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_nso_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
+)
 
 # Include integration tests subdirectory
 add_subdirectory(integration)
