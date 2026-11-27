@@ -60,6 +60,10 @@ set_tests_properties(kirbyrecomp_nso_integration_all PROPERTIES
     TIMEOUT 120
     LABELS "nso;integration"
 )
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_nso_integration_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
+)
 
 # Test target: HLE Services integration tests
 add_executable(kirbyrecomp_hle_tests
@@ -106,6 +110,10 @@ add_test(
 set_tests_properties(kirbyrecomp_hle_all PROPERTIES
     TIMEOUT 120
     LABELS "hle;integration"
+)
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_hle_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 # Test target: ASTC Decoder tests
@@ -154,6 +162,10 @@ set_tests_properties(kirbyrecomp_astc_all PROPERTIES
     TIMEOUT 120
     LABELS "astc;integration"
 )
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_astc_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
+)
 
 # Test target: ASTC to BC7 Transcoding tests
 target_include_directories(kirbyrecomp_astc_bc7_tests PRIVATE
@@ -191,6 +203,10 @@ add_test(
 set_tests_properties(kirbyrecomp_astc_bc7_all PROPERTIES
     TIMEOUT 120
     LABELS "astc;bc7;integration"
+)
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_astc_bc7_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 # Test target: AArch64 Decoder tests
@@ -234,4 +250,8 @@ add_test(
 set_tests_properties(kirbyrecomp_decoder_all PROPERTIES
     TIMEOUT 120
     LABELS "decoder;unit"
+)
+# Set TMP/TEMP to build directory for tests that invoke g++ (avoids C:\Windows permission issues)
+set_tests_properties(kirbyrecomp_decoder_all PROPERTIES
+    ENVIRONMENT "TMP=${CMAKE_CURRENT_BINARY_DIR};TEMP=${CMAKE_CURRENT_BINARY_DIR}"
 )
