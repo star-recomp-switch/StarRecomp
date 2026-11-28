@@ -69,13 +69,23 @@ void SpvBuilder::entry_point(ExecutionModel model, uint32_t entry_point_id,
     std::vector<uint32_t> operands;
     operands.push_back(static_cast<uint32_t>(model));
     operands.push_back(entry_point_id);
-    for (size_t i = 0; i < name.size(); i += 4) {
+
+    // SPIR-V requires the name to be null-terminated and padded to 4-byte alignment
+    // Pack the name into 32-bit words, adding null terminator and padding
+    size_t name_len = name.size();
+    size_t padded_len = (name_len + 1 + 3) & ~3u;  // +1 for null terminator, round up to 4 bytes
+    std::vector<uint8_t> name_bytes(padded_len, 0);
+    std::memcpy(name_bytes.data(), name.data(), name_len);
+    // Null terminator is already 0 from vector initialization
+
+    for (size_t i = 0; i < padded_len; i += 4) {
         uint32_t word = 0;
-        for (size_t j = 0; j < 4 && i + j < name.size(); ++j) {
-            word |= static_cast<uint32_t>(name[i + j]) << (j * 8);
+        for (size_t j = 0; j < 4; ++j) {
+            word |= static_cast<uint32_t>(name_bytes[i + j]) << (j * 8);
         }
         operands.push_back(word);
     }
+
     for (uint32_t id : interface_ids) {
         operands.push_back(id);
     }
