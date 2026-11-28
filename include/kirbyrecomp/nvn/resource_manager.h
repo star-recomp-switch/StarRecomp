@@ -573,6 +573,40 @@ public:
     // Load a single BFRES texture by name
     uint64_t load_bfres_texture_by_name(const kirbyrecomp::bfres::BfresFile& bfres, const std::string& name);
 
+// ============================================================================
+    // Pipeline Layout Compatibility
+    // ============================================================================
+
+    struct PipelineLayoutCompatibility {
+        bool compatible = false;
+        std::string reason;
+    };
+
+    // Check if two pipeline layouts are compatible (can share descriptor sets)
+    PipelineLayoutCompatibility check_pipeline_layout_compatibility(
+        uint64_t pipeline_handle_a, uint64_t pipeline_handle_b) const;
+
+    // ============================================================================
+    // Shader Specialization Constants
+    // ============================================================================
+
+    struct SpecializationConstant {
+        uint32_t constant_id;
+        uint32_t offset;
+        uint32_t size;
+        std::vector<uint8_t> data;
+    };
+
+    // Create a graphics pipeline with specialization constants
+    uint64_t create_graphics_pipeline_with_specialization(
+        const PipelineDesc& desc,
+        const std::vector<SpecializationConstant>& specialization_constants);
+
+    // Create a compute pipeline with specialization constants
+    uint64_t create_compute_pipeline_with_specialization(
+        const ComputePipelineDesc& desc,
+        const std::vector<SpecializationConstant>& specialization_constants);
+
 private:
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;

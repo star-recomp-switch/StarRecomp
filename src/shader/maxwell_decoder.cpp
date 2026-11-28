@@ -473,20 +473,24 @@ bool Decoder::decode_fmt_i(const uint64_t* raw, DecodedInstruction& inst) {
         inst.src_operands.push_back(Operand{OperandType::REGISTER, *src_reg, 0, 0, 0xE4, false, false});
     }
 
-    // Immediate encoding:
-    // 13-bit immediate: bits [51:39] (sign-extended)
-    // 32-bit immediate: bits [63:32] (when opcode indicates 32-bit immediate)
-    // 64-bit immediate: uses dual-issue second word (full 64-bit)
+    // Immediate encoding (Maxwell ISA):
+    // 13-bit immediate: bits [51:39] (sign-extended to 32/64 bits)
+    // 32-bit immediate: uses extended format with bit 62 set, value in bits [63:32]
+    // 64-bit immediate: uses dual-issue second word (full 64-bit in raw[1])
 
-    // Check if this is a 32-bit immediate instruction
-    // In Maxwell, 32-bit immediates use a different opcode format
-    // For now, decode as 13-bit sign-extended
+    // Extract 13-bit immediate (bits [51:39])
     int32_t imm13 = static_cast<int32_t>(extract_bits(word, 39, 13)) << 19 >> 19;
 
-    // Check for 32-bit immediate (bit 62 set in some encodings)
+    // Check for 32-bit immediate (bit 62 indicates 32-bit immediate format)
     bool is_32bit_imm = (word >> 62) & 1;
+
+    // Check for 64-bit immediate (dual-issue pair with raw[1] containing the immediate)
+    bool is_64bit_imm = false;
+    // In Maxwell, 64-bit immediates are encoded as dual-issue pairs
+    // The first instruction has a special opcode indicating 64-bit immediate follows
+
     if (is_32bit_imm && raw[1] != 0) {
-        // 32-bit immediate in bits [63:32]
+        // 32-bit immediate in bits [63:32] of the first word
         uint32_t imm32 = static_cast<uint32_t>(word >> 32);
         inst.src_operands.push_back(Operand{
             OperandType::IMMEDIATE,
@@ -494,6 +498,26 @@ bool Decoder::decode_fmt_i(const uint64_t* raw, DecodedInstruction& inst) {
             static_cast<int64_t>(static_cast<int32_t>(imm32)),
             0, 0, false, false
         });
+    } else if (inst.info.opcode == MaxwellOpcode::MOV && (inst.raw[0] & 0xFF) == 0xFF) {
+        // Extended opcode MOV with 64-bit immediate in dual-issue second word
+        // This is a special case for 64-bit immediates
+        if (raw[1] != 0) {
+            uint64_t imm64 = raw[1];
+            inst.src_operands.push_back(Operand{
+                OperandType::IMMEDIATE,
+                {RegisterFile::GPR, 0},
+                static_cast<int64_t>(imm64),
+                0, 0, false, false
+            });
+        } else {
+            // Standard 13-bit sign-extended immediate
+            inst.src_operands.push_back(Operand{
+                OperandType::IMMEDIATE,
+                {RegisterFile::GPR, 0},
+                static_cast<int64_t>(imm13),
+                0, 0, false, false
+            });
+        }
     } else {
         // Standard 13-bit sign-extended immediate
         inst.src_operands.push_back(Operand{

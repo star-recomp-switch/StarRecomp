@@ -438,16 +438,38 @@ TEST(SpirvGenerator, SpirvValValidation) {
     uint32_t float32_type = builder.type_float(32);
 
     uint32_t func_type = builder.type_function(void_type, {});
+
+    // Entry point must be declared before function definitions in SPIR-V
     uint32_t func = builder.function_begin(void_type, func_type);
+    builder.entry_point(spirv::ExecutionModel::GLCompute, func, "main", {});
 
     // Create entry block with return instruction (required for valid SPIR-V)
     uint32_t entry_label = builder.label();
     builder.return_inst();
     builder.function_end();
 
-    builder.entry_point(spirv::ExecutionModel::GLCompute, func, "main", {});
-
     auto module = builder.end_module();
+
+    // Debug: print SPIR-V words (skip 5-word header)
+    std::cout << "=== SPIR-V Debug Output ===" << std::endl;
+    std::cout << "Total words: " << module.words.size() << std::endl;
+    // Skip 5-word header
+    size_t i = 5;
+    while (i < module.words.size()) {
+        uint32_t word = module.words[i];
+        uint16_t opcode = word & 0xFFFF;
+        uint16_t word_count = word >> 16;
+        std::cout << "  word[" << i << "] = 0x" << std::hex << word << std::dec
+                  << " (opcode=" << opcode << ", count=" << word_count << ")" << std::endl;
+        if (word_count > 1) {
+            for (size_t j = 1; j < word_count; ++j) {
+                std::cout << "    operand[" << j-1 << "] = 0x" << std::hex << module.words[i+j] << std::dec << std::endl;
+            }
+            i += word_count - 1;
+        }
+        i++;
+    }
+    std::cout << "=============================" << std::endl;
 
     // Convert to bytes for spirv-val
     std::vector<uint8_t> spirv_bytes(module.words.size() * 4);
@@ -480,7 +502,7 @@ TEST(SpirvGenerator, SpirvValValidation) {
     int status = pclose(pipe);
 
     // Clean up
-    std::remove(temp_file.c_str());
+    // std::remove(temp_file.c_str());  // Keep file for debugging
 
     if (status == 0) {
         if (result.find("Passed") != std::string::npos) {
