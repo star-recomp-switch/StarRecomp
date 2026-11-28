@@ -1489,15 +1489,38 @@ uint64_t ResourceManager::create_descriptor_pool(const std::vector<VkDescriptorP
     return handle;
 }
 
+// Compute layout hash for pooling
+static uint64_t compute_layout_hash(const std::vector<VkDescriptorSetLayout>& layouts) {
+    uint64_t hash = 0;
+    for (VkDescriptorSetLayout layout : layouts) {
+        hash = hash * 31 + reinterpret_cast<uint64_t>(layout);
+    }
+    return hash;
+}
+
 uint64_t ResourceManager::allocate_descriptor_set(uint64_t pool_handle, const std::vector<VkDescriptorSetLayout>& layouts) {
     auto pool_it = descriptor_pools_.find(pool_handle);
     if (pool_it == descriptor_pools_.end()) return 0;
+
+    uint64_t layout_hash = compute_layout_hash(layouts);
+
+    // Try to find a free descriptor set with matching layout in the pool
+    for (auto& [handle, resource] : descriptor_sets_) {
+        if (resource.pool == pool_it->second && resource.layout_hash == layout_hash && !resource.in_use) {
+            resource.in_use = true;
+            return handle;
+        }
+    }
+
+    // No free set available, allocate new one
+    auto pool_it2 = descriptor_pools_.find(pool_handle);
+    if (pool_it2 == descriptor_pools_.end()) return 0;
 
     uint64_t handle = allocate_handle();
     DescriptorSetResource resource;
 
     VkDescriptorSetAllocateInfo alloc_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    alloc_info.descriptorPool = pool_it->second;
+    alloc_info.descriptorPool = pool_it2->second;
     alloc_info.descriptorSetCount = static_cast<uint32_t>(layouts.size());
     alloc_info.pSetLayouts = layouts.data();
 
@@ -1509,7 +1532,9 @@ uint64_t ResourceManager::allocate_descriptor_set(uint64_t pool_handle, const st
     }
 
     resource.set = sets[0];
-    resource.pool = pool_it->second;
+    resource.pool = pool_it2->second;
+    resource.layout_hash = compute_layout_hash(layouts);
+    resource.in_use = true;
     descriptor_sets_[handle] = std::move(resource);
     return handle;
 }
@@ -1521,6 +1546,14 @@ void ResourceManager::free_descriptor_set(uint64_t pool_handle, uint64_t set_han
     auto pool_it = descriptor_pools_.find(pool_handle);
     if (pool_it == descriptor_pools_.end()) return;
 
+    // Instead of freeing, return to pool for reuse
+    auto& resource = set_it->second;
+    if (resource.pool == pool_it->second) {
+        resource.in_use = false;
+        return;
+    }
+
+    // If pool doesn't match, actually free it
     vkFreeDescriptorSets(device_, pool_it->second, 1, &set_it->second.set);
     descriptor_sets_.erase(set_it);
 }
@@ -1529,6 +1562,13 @@ std::optional<DescriptorSetResource*> ResourceManager::get_descriptor_set(uint64
     auto it = descriptor_sets_.find(handle);
     if (it == descriptor_sets_.end()) return std::nullopt;
     return &it->second;
+}
+
+// Return a descriptor set to the pool for reuse
+void ResourceManager::return_descriptor_set(uint64_t set_handle) {
+    auto it = descriptor_sets_.find(set_handle);
+    if (it == descriptor_sets_.end()) return;
+    it->second.in_use = false;
 }
 
 void ResourceManager::update_descriptor_sets(uint64_t set_handle,
