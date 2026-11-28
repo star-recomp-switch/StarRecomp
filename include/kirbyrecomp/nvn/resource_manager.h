@@ -350,6 +350,8 @@ struct DescriptorSetResource {
     VkDescriptorSet set = VK_NULL_HANDLE;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSetLayoutBinding> bindings;
+    uint64_t layout_hash = 0;  // Hash of layout for pooling
+    bool in_use = false;       // For pooling
 };
 
 struct ShaderModuleResource {
@@ -468,6 +470,7 @@ public:
     uint64_t create_descriptor_pool(const std::vector<VkDescriptorPoolSize>& pool_sizes, uint32_t max_sets);
     uint64_t allocate_descriptor_set(uint64_t pool_handle, const std::vector<VkDescriptorSetLayout>& layouts);
     void free_descriptor_set(uint64_t pool_handle, uint64_t set_handle);
+    void return_descriptor_set(uint64_t set_handle);
     std::optional<DescriptorSetResource*> get_descriptor_set(uint64_t handle);
 
     // Update descriptor sets
