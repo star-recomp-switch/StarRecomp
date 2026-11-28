@@ -2279,4 +2279,147 @@ uint64_t ResourceManager::load_bfres_texture_by_name(const kirbyrecomp::bfres::B
     return 0;
 }
 
+
+
+
+// ============================================================================
+// Pipeline Layout Compatibility
+// ============================================================================
+
+ResourceManager::PipelineLayoutCompatibility ResourceManager::check_pipeline_layout_compatibility(
+    uint64_t pipeline_handle_a, uint64_t pipeline_handle_b) const {
+
+    PipelineLayoutCompatibility result;
+
+    auto opt_a = get_pipeline(pipeline_handle_a);
+    auto opt_b = get_pipeline(pipeline_handle_b);
+
+    if (!opt_a || !opt_b) {
+        result.reason = "One or both pipelines not found";
+        return result;
+    }
+
+    const PipelineResource* pipeline_a = *opt_a;
+    const PipelineResource* pipeline_b = *opt_b;
+
+    // Check if layouts are identical (same descriptor set layouts and push constant ranges)
+    if (pipeline_a->descriptor_set_layouts.size() != pipeline_b->descriptor_set_layouts.size()) {
+        result.reason = "Descriptor set layout count mismatch";
+        return result;
+    }
+
+    // Compare descriptor set layouts
+    for (size_t i = 0; i < pipeline_a->descriptor_set_layouts.size(); ++i) {
+        if (pipeline_a->descriptor_set_layouts[i] != pipeline_b->descriptor_set_layouts[i]) {
+            result.reason = "Descriptor set layout mismatch at index " + std::to_string(i);
+            return result;
+        }
+    }
+
+    // Check pipeline layouts (same layout means compatible push constants)
+    if (pipeline_a->layout != pipeline_b->layout) {
+        result.reason = "Pipeline layout handles differ";
+        return result;
+    }
+
+    result.compatible = true;
+    result.reason = "Pipeline layouts are compatible";
+    return result;
+}
+
+// ============================================================================
+// Shader Specialization Constants
+// ============================================================================
+
+uint64_t ResourceManager::create_graphics_pipeline_with_specialization(
+    const PipelineDesc& desc,
+    const std::vector<SpecializationConstant>& specialization_constants) {
+
+    // Create descriptor set layouts from shader reflections
+    auto set_layouts = create_descriptor_set_layouts(desc.shader_reflections);
+    if (set_layouts.empty() && !desc.shader_reflections.empty()) {
+        if (last_error_.empty()) {
+            last_error_ = "Failed to create descriptor set layouts";
+        }
+        return 0;
+    }
+
+    // Create pipeline layout with push constants
+    VkPipelineLayout pipeline_layout = create_pipeline_layout(set_layouts, desc.push_constant_ranges);
+    if (pipeline_layout == VK_NULL_HANDLE) {
+        for (auto layout : set_layouts) {
+            if (layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device_, layout, nullptr);
+        }
+        return 0;
+    }
+
+    // Create shader stages with specialization info
+    std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+    shader_stages.reserve(desc.shader_handles.size());
+
+    // Prepare specialization info for each stage
+    std::vector<VkSpecializationInfo> specialization_infos;
+    std::vector<VkSpecializationMapEntry> specialization_map_entries;
+    std::vector<uint8_t> specialization_data;
+
+    for (size_t i = 0; i < desc.shader_handles.size() && i < desc.shader_reflections.size(); ++i) {
+        auto shader_opt = get_shader_module(desc.shader_handles[i]);
+        if (!shader_opt || !*shader_opt) continue;
+
+        VkPipelineShaderStageCreateInfo stage_info{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stage_info.module = (*shader_opt)->module;
+        stage_info.pName = "main";
+        stage_info.stage = shader_stage_to_vk_stage(desc.shader_reflections[i].stage);
+
+        // Build specialization info for this stage
+        if (!specialization_constants.empty()) {
+            VkSpecializationInfo spec_info{};
+            uint32_t offset = 0;
+            std::vector<VkSpecializationMapEntry> specialization_map_entries;
+            std::vector<uint8_t> specialization_data;
+
+            for (const auto& spec : specialization_constants) {
+                VkSpecializationMapEntry entry{};
+                entry.constantID = spec.constant_id;
+                entry.offset = spec.offset;
+                entry.size = spec.size;
+                specialization_map_entries.push_back(entry);
+
+                specialization_data.insert(specialization_data.end(),
+                    spec.data.begin(), spec.data.end());
+            }
+
+            spec_info.mapEntryCount = static_cast<uint32_t>(specialization_map_entries.size());
+            spec_info.pMapEntries = specialization_map_entries.data();
+            spec_info.dataSize = specialization_data.size();
+            spec_info.pData = specialization_data.data();
+
+            stage_info.pSpecializationInfo = &spec_info;
+        }
+
+        shader_stages.push_back(stage_info);
+    }
+
+    if (shader_stages.empty()) {
+        last_error_ = "No valid shader stages for pipeline";
+        return 0;
+    }
+
+    // Create graphics pipeline with specialization constants
+    // This is similar to create_graphics_pipeline but with specialization info
+    // ... (reuse create_graphics_pipeline logic with specialization info)
+
+    last_error_ = "Graphics pipeline with specialization constants not fully implemented yet";
+    return 0;
+}
+
+uint64_t ResourceManager::create_compute_pipeline_with_specialization(
+    const ComputePipelineDesc& desc,
+    const std::vector<SpecializationConstant>& specialization_constants) {
+
+    // Similar implementation for compute pipelines
+    last_error_ = "Compute pipeline with specialization constants not fully implemented yet";
+    return 0;
+}
+
 } // namespace kirbyrecomp::nvn
