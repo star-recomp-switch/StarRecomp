@@ -31,102 +31,64 @@ std::vector<uint8_t> read_file(const std::string& path) {
 
 // Helper to find test fixture directory (without std::filesystem)
 std::string get_fixture_dir() {
-    // Try multiple locations
+    // Try multiple locations - check for a known fixture file
+    // Build directory structure: build/tests/integration/ -> vendor is at ../vendor
     const char* candidates[] = {
-        "vendor/switchrecomp/tests/fixtures",
-        "../vendor/switchrecomp/tests/fixtures",
-        "../../vendor/switchrecomp/tests/fixtures",
-        "../../../vendor/switchrecomp/tests/fixtures",
+        "../vendor/switchrecomp/tests/fixtures",       // from build/tests/integration
+        "../../vendor/switchrecomp/tests/fixtures",    // from build/tests
+        "../vendor/switchrecomp/tests/fixtures",       // from build
+        "vendor/switchrecomp/tests/fixtures",          // from build root
+        "KirbyRecomp/vendor/switchrecomp/tests/fixtures",  // from source root
         nullptr
     };
     for (int i = 0; candidates[i]; ++i) {
-        if (std::ifstream(candidates[i]).good()) {
+        std::string test_file = std::string(candidates[i]) + "/translator/golden/add_imm.json";
+        std::ifstream f(test_file);
+        std::cout << "DEBUG get_fixture_dir: checking " << test_file << " -> " << (f.good() ? "FOUND" : "NOT FOUND") << std::endl;
+        if (f.good()) {
+            std::cout << "DEBUG get_fixture_dir: returning " << candidates[i] << std::endl;
             return candidates[i];
         }
     }
     return "vendor/switchrecomp/tests/fixtures";
 }
 
-// Test that Maxwell decoder can parse instructions from golden fixtures
-TEST(MaxwellDecoder, GoldenFixtures) {
-    std::string fixture_dir = get_fixture_dir() + "/translator/golden";
-
-    // Check if directory exists without std::filesystem
-    if (std::ifstream(fixture_dir + "/.git").fail() &&
-        std::ifstream(fixture_dir + "/add_imm.json").fail()) {
-        GTEST_SKIP() << "Golden fixtures not found at " << fixture_dir;
-    }
-
+// Test that Maxwell decoder doesn't crash on various byte patterns
+// The Maxwell decoder is for NVIDIA GPU shader instructions, not ARM64 CPU instructions
+TEST(MaxwellDecoder, NoCrashOnRandomBytes) {
     maxwell::Decoder decoder;
     int tested = 0;
     int passed = 0;
 
-    // List of known fixture files to test
-    const char* fixture_files[] = {
-        "add_imm.json", "add_reg.json", "sub_imm.json", "movz_imm.json",
-        "and_reg.json", "orr_reg.json", "eor_reg.json", "b.json",
-        "bl.json", "cbz.json", "cbnz.json", "ret.json",
-        "ldr_imm.json", "str_imm.json", "ldr_reg.json", "str_reg.json",
-        "lsl_imm.json", "lsr_imm.json", "asr_imm.json",
-        "madd.json", "msub.json", "fadd_s.json", "fmul_s.json",
-        "fabs_s.json", "fneg_s.json", "fcsel_s.json", "fcmp_s.json",
-        "fcvtzs_s.json", "fcvt_ds.json", "fcvt_sd.json",
-        "ldp.json", "stp.json", "adrp.json", "cmp_imm.json",
-        "nop.json", "movi_4s.json", "fdup_4s.json", "fmov_imm.json",
-        "fmov_reg.json", "ins_s.json", "umov_s.json", "sqrt_s.json",
-        "frintn_s.json", "frintz_s.json", "frintp_s.json", "frintm_s.json",
-        "frinta_s.json", "frintz_s.json", "scvtf_s.json", "scvtf_d.json",
-        nullptr
+    // Test various byte patterns - decoder should not crash
+    struct Sample {
+        const char* name;
+        std::vector<uint8_t> bytes;
     };
 
-    for (int i = 0; fixture_files[i]; ++i) {
-        std::string path = fixture_dir + "/" + fixture_files[i];
-        auto json_data = read_file(path);
-        if (json_data.empty()) continue;
+    const Sample samples[] = {
+        {"zeros", {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+        {"ones", {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+        {"pattern1", {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}},
+        {"pattern2", {0x7F, 0x80, 0xFF, 0x00, 0x7F, 0x80, 0xFF, 0x00}},
+        // MOVI-like pattern (not necessarily valid Maxwell, but shouldn't crash)
+        {"movi_like", {0x00, 0xF7, 0x03, 0x4F, 0x00, 0x00, 0x00, 0x00}},
+        // FADD-like pattern
+        {"fadd_like", {0x02, 0xD4, 0x21, 0x4E, 0x00, 0x00, 0x00, 0x00}},
+        {nullptr, {}}
+    };
 
-        // Parse JSON to extract the instruction bytes
-        nlohmann::json j;
-        try {
-            j = nlohmann::json::parse(json_data);
-        } catch (...) {
-            continue;
-        }
-
-        // Extract instruction encoding from JSON
-        if (!j.contains("encoding")) continue;
-
-        std::string encoding_str = j["encoding"];
-        // Remove "0x" prefix if present
-        if (encoding_str.size() >= 2 && encoding_str[0] == '0' && encoding_str[1] == 'x') {
-            encoding_str = encoding_str.substr(2);
-        }
-
-        uint32_t encoding = 0;
-        try {
-            encoding = std::stoul(encoding_str, nullptr, 16);
-        } catch (...) {
-            continue;
-        }
-
-        // Convert to bytes (little-endian)
-        std::vector<uint8_t> bytes = {
-            static_cast<uint8_t>(encoding & 0xFF),
-            static_cast<uint8_t>((encoding >> 8) & 0xFF),
-            static_cast<uint8_t>((encoding >> 16) & 0xFF),
-            static_cast<uint8_t>((encoding >> 24) & 0xFF)
-        };
-
-        // Decode the instruction
-        auto result = decoder.decode_instruction(0, bytes.data(), bytes.size());
+    for (int i = 0; samples[i].name; ++i) {
+        auto result = decoder.decode_instruction(0, samples[i].bytes.data(), samples[i].bytes.size());
         if (result) {
             passed++;
         }
         tested++;
     }
 
-    EXPECT_GT(tested, 0) << "No golden fixtures were tested";
-    EXPECT_EQ(passed, tested) << "Some golden fixtures failed to decode";
-    std::cout << "Tested " << tested << " golden fixtures, " << passed << " passed" << std::endl;
+    EXPECT_GT(tested, 0) << "No samples were tested";
+    // Decoder should not crash on any input
+    std::cout << "Tested " << tested << " byte patterns, decoder did not crash" << std::endl;
 }
 
 // Test SPIR-V generator basic functionality using SpvBuilder
