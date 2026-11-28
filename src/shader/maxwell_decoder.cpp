@@ -16,105 +16,105 @@ namespace kirbyrecomp::shader::maxwell {
 namespace {
 const InstructionInfo kInstructionInfoTable[] = {
     // Data movement
-    {MaxwellOpcode::MOV,   "MOV",   InstFormat::FMT_R,    1, 1, true, false, "Move register to register"},
-    {MaxwellOpcode::SELP,  "SELP",  InstFormat::FMT_R,    2, 1, true, false, "Select based on predicate"},
-    {MaxwellOpcode::SHF,   "SHF",   InstFormat::FMT_R,    3, 1, true, false, "Shift and fold"},
-    {MaxwellOpcode::PRMT,  "PRMT",  InstFormat::FMT_R,    3, 1, true, false, "Permute bytes"},
+    {MaxwellOpcode::MOV,   "MOV",   InstFormat::FMT_R,    1, 1, true, false, false, "Move register to register"},
+    {MaxwellOpcode::SELP,  "SELP",  InstFormat::FMT_R,    2, 1, true, false, false, "Select based on predicate"},
+    {MaxwellOpcode::SHF,   "SHF",   InstFormat::FMT_R,    3, 1, true, false, false, "Shift and fold"},
+    {MaxwellOpcode::PRMT,  "PRMT",  InstFormat::FMT_R,    3, 1, true, false, false, "Permute bytes"},
 
     // Integer arithmetic
-    {MaxwellOpcode::IADD,  "IADD",  InstFormat::FMT_R,    2, 1, true, true,  "Integer add"},
-    {MaxwellOpcode::IADD3, "IADD3", InstFormat::FMT_R,    3, 1, true, true,  "Integer add 3-operand"},
-    {MaxwellOpcode::IMAD,  "IMAD",  InstFormat::FMT_R,    3, 1, true, true,  "Integer multiply-add"},
-    {MaxwellOpcode::IMADSP,"IMADSP",InstFormat::FMT_R,    3, 1, true, true,  "Integer multiply-add (special)"},
-    {MaxwellOpcode::IMUL,  "IMUL",  InstFormat::FMT_R,    2, 1, true, true,  "Integer multiply"},
-    {MaxwellOpcode::IMULH, "IMULH", InstFormat::FMT_R,    2, 1, true, true,  "Integer multiply high"},
-    {MaxwellOpcode::IDIV,  "IDIV",  InstFormat::FMT_R,    2, 1, true, true,  "Integer divide"},
-    {MaxwellOpcode::IREM,  "IREM",  InstFormat::FMT_R,    2, 1, true, true,  "Integer remainder"},
-    {MaxwellOpcode::ISETP, "ISETP", InstFormat::FMT_R,    2, 0, true, true,  "Integer compare and set predicate"},
-    {MaxwellOpcode::ISAD,  "ISAD",  InstFormat::FMT_R,    3, 1, true, true,  "Integer sum of absolute differences"},
+    {MaxwellOpcode::IADD,  "IADD",  InstFormat::FMT_R,    2, 1, true, true,  false, "Integer add"},
+    {MaxwellOpcode::IADD3, "IADD3", InstFormat::FMT_R,    3, 1, true, true,  false, "Integer add 3-operand"},
+    {MaxwellOpcode::IMAD,  "IMAD",  InstFormat::FMT_R,    3, 1, true, true,  false, "Integer multiply-add"},
+    {MaxwellOpcode::IMADSP,"IMADSP",InstFormat::FMT_R,    3, 1, true, true,  false, "Integer multiply-add (special)"},
+    {MaxwellOpcode::IMUL,  "IMUL",  InstFormat::FMT_R,    2, 1, true, true,  false, "Integer multiply"},
+    {MaxwellOpcode::IMULH, "IMULH", InstFormat::FMT_R,    2, 1, true, true,  false, "Integer multiply high"},
+    {MaxwellOpcode::IDIV,  "IDIV",  InstFormat::FMT_R,    2, 1, true, true,  false, "Integer divide"},
+    {MaxwellOpcode::IREM,  "IREM",  InstFormat::FMT_R,    2, 1, true, true,  false, "Integer remainder"},
+    {MaxwellOpcode::ISETP, "ISETP", InstFormat::FMT_R,    2, 0, true, true,  false, "Integer compare and set predicate"},
+    {MaxwellOpcode::ISAD,  "ISAD",  InstFormat::FMT_R,    3, 1, true, true,  false, "Integer sum of absolute differences"},
 
     // Bitwise
-    {MaxwellOpcode::AND,   "AND",   InstFormat::FMT_R,    2, 1, true, false, "Bitwise AND"},
-    {MaxwellOpcode::OR,    "OR",    InstFormat::FMT_R,    2, 1, true, false, "Bitwise OR"},
-    {MaxwellOpcode::XOR,   "XOR",   InstFormat::FMT_R,    2, 1, true, false, "Bitwise XOR"},
-    {MaxwellOpcode::NOT,   "NOT",   InstFormat::FMT_R,    1, 1, true, false, "Bitwise NOT"},
-    {MaxwellOpcode::BFI,   "BFI",   InstFormat::FMT_R,    3, 1, true, false, "Bit field insert"},
-    {MaxwellOpcode::BFE,   "BFE",   InstFormat::FMT_R,    2, 1, true, false, "Bit field extract"},
-    {MaxwellOpcode::SHL,   "SHL",   InstFormat::FMT_R,    2, 1, true, false, "Shift left"},
-    {MaxwellOpcode::SHR,   "SHR",   InstFormat::FMT_R,    2, 1, true, false, "Shift right"},
-    {MaxwellOpcode::SHF_R, "SHF_R", InstFormat::FMT_R,    3, 1, true, false, "Shift and fold reverse"},
+    {MaxwellOpcode::AND,   "AND",   InstFormat::FMT_R,    2, 1, true, false, false, "Bitwise AND"},
+    {MaxwellOpcode::OR,    "OR",    InstFormat::FMT_R,    2, 1, true, false, false, "Bitwise OR"},
+    {MaxwellOpcode::XOR,   "XOR",   InstFormat::FMT_R,    2, 1, true, false, false, "Bitwise XOR"},
+    {MaxwellOpcode::NOT,   "NOT",   InstFormat::FMT_R,    1, 1, true, false, false, "Bitwise NOT"},
+    {MaxwellOpcode::BFI,   "BFI",   InstFormat::FMT_R,    3, 1, true, false, false, "Bit field insert"},
+    {MaxwellOpcode::BFE,   "BFE",   InstFormat::FMT_R,    2, 1, true, false, false, "Bit field extract"},
+    {MaxwellOpcode::SHL,   "SHL",   InstFormat::FMT_R,    2, 1, true, false, false, "Shift left"},
+    {MaxwellOpcode::SHR,   "SHR",   InstFormat::FMT_R,    2, 1, true, false, false, "Shift right"},
+    {MaxwellOpcode::SHF_R, "SHF_R", InstFormat::FMT_R,    3, 1, true, false, false, "Shift and fold reverse"},
 
     // Floating point
-    {MaxwellOpcode::FADD,  "FADD",  InstFormat::FMT_R,    2, 1, true, true,  "Float add"},
-    {MaxwellOpcode::FMUL,  "FMUL",  InstFormat::FMT_R,    2, 1, true, true,  "Float multiply"},
-    {MaxwellOpcode::FMAD,  "FMAD",  InstFormat::FMT_R,    3, 1, true, true,  "Float multiply-add"},
-    {MaxwellOpcode::FFMA,  "FFMA",  InstFormat::FMT_R,    3, 1, true, true,  "Float fused multiply-add"},
-    {MaxwellOpcode::FDIV,  "FDIV",  InstFormat::FMT_R,    2, 1, true, true,  "Float divide"},
-    {MaxwellOpcode::FSETP, "FSETP", InstFormat::FMT_R,    2, 0, true, true,  "Float compare and set predicate"},
-    {MaxwellOpcode::FMIN,  "FMIN",  InstFormat::FMT_R,    2, 1, true, true,  "Float minimum"},
-    {MaxwellOpcode::FMAX,  "FMAX",  InstFormat::FMT_R,    2, 1, true, true,  "Float maximum"},
-    {MaxwellOpcode::FSQRT, "FSQRT", InstFormat::FMT_R,    1, 1, true, true,  "Float square root"},
-    {MaxwellOpcode::FRCP,  "FRCP",  InstFormat::FMT_R,    1, 1, true, true,  "Float reciprocal"},
-    {MaxwellOpcode::FRSQ,  "FRSQ",  InstFormat::FMT_R,    1, 1, true, true,  "Float reciprocal square root"},
-    {MaxwellOpcode::FSIN,  "FSIN",  InstFormat::FMT_R,    1, 1, true, true,  "Float sine"},
-    {MaxwellOpcode::FCOS,  "FCOS",  InstFormat::FMT_R,    1, 1, true, true,  "Float cosine"},
-    {MaxwellOpcode::F2F,   "F2F",   InstFormat::FMT_R,    1, 1, true, false, "Float to float conversion"},
-    {MaxwellOpcode::F2I,   "F2I",   InstFormat::FMT_R,    1, 1, true, false, "Float to int conversion"},
-    {MaxwellOpcode::I2F,   "I2F",   InstFormat::FMT_R,    1, 1, true, false, "Int to float conversion"},
-    {MaxwellOpcode::F2I_RZ,"F2I_RZ",InstFormat::FMT_R,    1, 1, true, false, "Float to int (round toward zero)"},
-    {MaxwellOpcode::F2I_RN,"F2I_RN",InstFormat::FMT_R,    1, 1, true, false, "Float to int (round nearest)"},
-    {MaxwellOpcode::F2I_RU,"F2I_RU",InstFormat::FMT_R,    1, 1, true, false, "Float to int (round up)"},
-    {MaxwellOpcode::F2I_RD,"F2I_RD",InstFormat::FMT_R,    1, 1, true, false, "Float to int (round down)"},
+    {MaxwellOpcode::FADD,  "FADD",  InstFormat::FMT_R,    2, 1, true, true,  false, "Float add"},
+    {MaxwellOpcode::FMUL,  "FMUL",  InstFormat::FMT_R,    2, 1, true, true,  false, "Float multiply"},
+    {MaxwellOpcode::FMAD,  "FMAD",  InstFormat::FMT_R,    3, 1, true, true,  false, "Float multiply-add"},
+    {MaxwellOpcode::FFMA,  "FFMA",  InstFormat::FMT_R,    3, 1, true, true,  false, "Float fused multiply-add"},
+    {MaxwellOpcode::FDIV,  "FDIV",  InstFormat::FMT_R,    2, 1, true, true,  false, "Float divide"},
+    {MaxwellOpcode::FSETP, "FSETP", InstFormat::FMT_R,    2, 0, true, true,  false, "Float compare and set predicate"},
+    {MaxwellOpcode::FMIN,  "FMIN",  InstFormat::FMT_R,    2, 1, true, true,  false, "Float minimum"},
+    {MaxwellOpcode::FMAX,  "FMAX",  InstFormat::FMT_R,    2, 1, true, true,  false, "Float maximum"},
+    {MaxwellOpcode::FSQRT, "FSQRT", InstFormat::FMT_R,    1, 1, true, true,  false, "Float square root"},
+    {MaxwellOpcode::FRCP,  "FRCP",  InstFormat::FMT_R,    1, 1, true, true,  false, "Float reciprocal"},
+    {MaxwellOpcode::FRSQ,  "FRSQ",  InstFormat::FMT_R,    1, 1, true, true,  false, "Float reciprocal square root"},
+    {MaxwellOpcode::FSIN,  "FSIN",  InstFormat::FMT_R,    1, 1, true, true,  false, "Float sine"},
+    {MaxwellOpcode::FCOS,  "FCOS",  InstFormat::FMT_R,    1, 1, true, true,  false, "Float cosine"},
+    {MaxwellOpcode::F2F,   "F2F",   InstFormat::FMT_R,    1, 1, true, false, false, "Float to float conversion"},
+    {MaxwellOpcode::F2I,   "F2I",   InstFormat::FMT_R,    1, 1, true, false, false, "Float to int conversion"},
+    {MaxwellOpcode::I2F,   "I2F",   InstFormat::FMT_R,    1, 1, true, false, false, "Int to float conversion"},
+    {MaxwellOpcode::F2I_RZ,"F2I_RZ",InstFormat::FMT_R,    1, 1, true, false, false, "Float to int (round toward zero)"},
+    {MaxwellOpcode::F2I_RN,"F2I_RN",InstFormat::FMT_R,    1, 1, true, false, false, "Float to int (round nearest)"},
+    {MaxwellOpcode::F2I_RU,"F2I_RU",InstFormat::FMT_R,    1, 1, true, false, false, "Float to int (round up)"},
+    {MaxwellOpcode::F2I_RD,"F2I_RD",InstFormat::FMT_R,    1, 1, true, false, false, "Float to int (round down)"},
 
     // Comparison/Selection
-    {MaxwellOpcode::SEL,   "SEL",   InstFormat::FMT_R,    3, 1, true, false, "Select"},
-    {MaxwellOpcode::SLCT,  "SLCT",  InstFormat::FMT_R,    3, 1, true, false, "Select with predicate"},
-    {MaxwellOpcode::CMP,   "CMP",   InstFormat::FMT_R,    2, 0, true, true,  "Compare"},
+    {MaxwellOpcode::SEL,   "SEL",   InstFormat::FMT_R,    3, 1, true, false, false, "Select"},
+    {MaxwellOpcode::SLCT,  "SLCT",  InstFormat::FMT_R,    3, 1, true, false, false, "Select with predicate"},
+    {MaxwellOpcode::CMP,   "CMP",   InstFormat::FMT_R,    2, 0, true, true,  false, "Compare"},
 
     // Memory
-    {MaxwellOpcode::LD,    "LD",    InstFormat::FMT_LDST, 1, 1, true, false, "Load local/shared"},
-    {MaxwellOpcode::ST,    "ST",    InstFormat::FMT_LDST, 2, 0, true, false, "Store local/shared"},
-    {MaxwellOpcode::LDG,   "LDG",   InstFormat::FMT_LDST, 1, 1, true, false, "Load global"},
-    {MaxwellOpcode::STG,   "STG",   InstFormat::FMT_LDST, 2, 0, true, false, "Store global"},
-    {MaxwellOpcode::LDS,   "LDS",   InstFormat::FMT_LDST, 1, 1, true, false, "Load shared"},
-    {MaxwellOpcode::STS,   "STS",   InstFormat::FMT_LDST, 2, 0, true, false, "Store shared"},
-    {MaxwellOpcode::LDU,   "LDU",   InstFormat::FMT_LDST, 1, 1, true, false, "Load uniform/constant"},
-    {MaxwellOpcode::ATOM,  "ATOM",  InstFormat::FMT_LDST, 2, 1, true, false, "Atomic operation"},
-    {MaxwellOpcode::RED,   "RED",   InstFormat::FMT_LDST, 2, 1, true, false, "Reduction operation"},
+    {MaxwellOpcode::LD,    "LD",    InstFormat::FMT_LDST, 1, 1, true, false, false, "Load local/shared"},
+    {MaxwellOpcode::ST,    "ST",    InstFormat::FMT_LDST, 2, 0, true, false, false, "Store local/shared"},
+    {MaxwellOpcode::LDG,   "LDG",   InstFormat::FMT_LDST, 1, 1, true, false, false, "Load global"},
+    {MaxwellOpcode::STG,   "STG",   InstFormat::FMT_LDST, 2, 0, true, false, false, "Store global"},
+    {MaxwellOpcode::LDS,   "LDS",   InstFormat::FMT_LDST, 1, 1, true, false, false, "Load shared"},
+    {MaxwellOpcode::STS,   "STS",   InstFormat::FMT_LDST, 2, 0, true, false, false, "Store shared"},
+    {MaxwellOpcode::LDU,   "LDU",   InstFormat::FMT_LDST, 1, 1, true, false, false, "Load uniform/constant"},
+    {MaxwellOpcode::ATOM,  "ATOM",  InstFormat::FMT_LDST, 2, 1, true, false, false, "Atomic operation"},
+    {MaxwellOpcode::RED,   "RED",   InstFormat::FMT_LDST, 2, 1, true, false, false, "Reduction operation"},
 
     // Texture
-    {MaxwellOpcode::TEX,   "TEX",   InstFormat::FMT_TEX,  3, 1, true, false, "Texture sample"},
-    {MaxwellOpcode::TXD,   "TXD",   InstFormat::FMT_TEX,  4, 1, true, false, "Texture sample with derivatives"},
-    {MaxwellOpcode::TXL,   "TXL",   InstFormat::FMT_TEX,  3, 1, true, false, "Texture sample LOD"},
-    {MaxwellOpcode::TXQ,   "TXQ",   InstFormat::FMT_TEX,  2, 1, true, false, "Texture query"},
-    {MaxwellOpcode::TXF,   "TXF",   InstFormat::FMT_TEX,  2, 1, true, false, "Texture fetch"},
-    {MaxwellOpcode::TXB,   "TXB",   InstFormat::FMT_TEX,  3, 1, true, false, "Texture sample with bias"},
-    {MaxwellOpcode::TEXS,  "TEXS",  InstFormat::FMT_TEX,  2, 1, true, false, "Texture sample (sparse)"},
+    {MaxwellOpcode::TEX,   "TEX",   InstFormat::FMT_TEX,  3, 1, true, false, false, "Texture sample"},
+    {MaxwellOpcode::TXD,   "TXD",   InstFormat::FMT_TEX,  4, 1, true, false, false, "Texture sample with derivatives"},
+    {MaxwellOpcode::TXL,   "TXL",   InstFormat::FMT_TEX,  3, 1, true, false, false, "Texture sample LOD"},
+    {MaxwellOpcode::TXQ,   "TXQ",   InstFormat::FMT_TEX,  2, 1, true, false, false, "Texture query"},
+    {MaxwellOpcode::TXF,   "TXF",   InstFormat::FMT_TEX,  2, 1, true, false, false, "Texture fetch"},
+    {MaxwellOpcode::TXB,   "TXB",   InstFormat::FMT_TEX,  3, 1, true, false, false, "Texture sample with bias"},
+    {MaxwellOpcode::TEXS,  "TEXS",  InstFormat::FMT_TEX,  2, 1, true, false, false, "Texture sample (sparse)"},
 
     // Control flow
-    {MaxwellOpcode::BRA,   "BRA",   InstFormat::FMT_CTRL, 0, 0, true, false, "Branch"},
-    {MaxwellOpcode::BRX,   "BRX",   InstFormat::FMT_CTRL, 1, 0, true, false, "Branch indirect"},
-    {MaxwellOpcode::JMP,   "JMP",   InstFormat::FMT_CTRL, 0, 0, false, false, "Jump"},
-    {MaxwellOpcode::CALL,  "CALL",  InstFormat::FMT_CTRL, 0, 0, true, false, "Call"},
-    {MaxwellOpcode::RET,   "RET",   InstFormat::FMT_CTRL, 0, 0, false, false, "Return"},
-    {MaxwellOpcode::EXIT,  "EXIT",  InstFormat::FMT_CTRL, 0, 0, false, false, "Exit thread"},
-    {MaxwellOpcode::BRK,   "BRK",   InstFormat::FMT_CTRL, 0, 0, true, false, "Break"},
-    {MaxwellOpcode::CONT,  "CONT",  InstFormat::FMT_CTRL, 0, 0, true, false, "Continue"},
-    {MaxwellOpcode::PBRK,  "PBRK",  InstFormat::FMT_CTRL, 0, 0, true, false, "Pre-break"},
-    {MaxwellOpcode::PCONT, "PCONT", InstFormat::FMT_CTRL, 0, 0, true, false, "Pre-continue"},
+    {MaxwellOpcode::BRA,   "BRA",   InstFormat::FMT_CTRL, 0, 0, true, false, false, "Branch"},
+    {MaxwellOpcode::BRX,   "BRX",   InstFormat::FMT_CTRL, 1, 0, true, false, false, "Branch indirect"},
+    {MaxwellOpcode::JMP,   "JMP",   InstFormat::FMT_CTRL, 0, 0, false, false, false, "Jump"},
+    {MaxwellOpcode::CALL,  "CALL",  InstFormat::FMT_CTRL, 0, 0, true, false, false, "Call"},
+    {MaxwellOpcode::RET,   "RET",   InstFormat::FMT_CTRL, 0, 0, false, false, false, "Return"},
+    {MaxwellOpcode::EXIT,  "EXIT",  InstFormat::FMT_CTRL, 0, 0, false, false, false, "Exit thread"},
+    {MaxwellOpcode::BRK,   "BRK",   InstFormat::FMT_CTRL, 0, 0, true, false, false, "Break"},
+    {MaxwellOpcode::CONT,  "CONT",  InstFormat::FMT_CTRL, 0, 0, true, false, false, "Continue"},
+    {MaxwellOpcode::PBRK,  "PBRK",  InstFormat::FMT_CTRL, 0, 0, true, false, false, "Pre-break"},
+    {MaxwellOpcode::PCONT, "PCONT", InstFormat::FMT_CTRL, 0, 0, true, false, false, "Pre-continue"},
 
     // Synchronization
-    {MaxwellOpcode::BAR,   "BAR",   InstFormat::FMT_SYNC, 1, 0, false, false, "Barrier"},
-    {MaxwellOpcode::SYNC,  "SYNC",  InstFormat::FMT_SYNC, 0, 0, false, false, "Synchronize"},
-    {MaxwellOpcode::MEMBAR,"MEMBAR",InstFormat::FMT_SYNC, 0, 0, false, false, "Memory barrier"},
+    {MaxwellOpcode::BAR,   "BAR",   InstFormat::FMT_SYNC, 1, 0, false, false, false, "Barrier"},
+    {MaxwellOpcode::SYNC,  "SYNC",  InstFormat::FMT_SYNC, 0, 0, false, false, false, "Synchronize"},
+    {MaxwellOpcode::MEMBAR,"MEMBAR",InstFormat::FMT_SYNC, 0, 0, false, false, false, "Memory barrier"},
 
     // Special
-    {MaxwellOpcode::NOP,   "NOP",   InstFormat::FMT_MISC, 0, 0, false, false, "No operation"},
-    {MaxwellOpcode::SSY,   "SSY",   InstFormat::FMT_MISC, 0, 0, false, false, "Set synchronization"},
-    {MaxwellOpcode::S2R,   "S2R",   InstFormat::FMT_MISC, 0, 1, false, false, "Special register read"},
-    {MaxwellOpcode::R2S,   "R2S",   InstFormat::FMT_MISC, 1, 0, false, false, "Special register write"},
-    {MaxwellOpcode::VOTE,  "VOTE",  InstFormat::FMT_MISC, 1, 1, true, false, "Warp vote"},
-    {MaxwellOpcode::LEPC,  "LEPC",  InstFormat::FMT_MISC, 0, 1, false, false, "Load EPC"},
+    {MaxwellOpcode::NOP,   "NOP",   InstFormat::FMT_MISC, 0, 0, false, false, false, "No operation"},
+    {MaxwellOpcode::SSY,   "SSY",   InstFormat::FMT_MISC, 0, 0, false, false, false, "Set synchronization"},
+    {MaxwellOpcode::S2R,   "S2R",   InstFormat::FMT_MISC, 0, 1, false, false, false, "Special register read"},
+    {MaxwellOpcode::R2S,   "R2S",   InstFormat::FMT_MISC, 1, 0, false, false, false, "Special register write"},
+    {MaxwellOpcode::VOTE,  "VOTE",  InstFormat::FMT_MISC, 1, 1, true, false, false, "Warp vote"},
+    {MaxwellOpcode::LEPC,  "LEPC",  InstFormat::FMT_MISC, 0, 1, false, false, false, "Load EPC"},
 };
 
 const size_t kInstructionCount = sizeof(kInstructionInfoTable) / sizeof(kInstructionInfoTable[0]);
@@ -127,7 +127,7 @@ const InstructionInfo& get_instruction_info(MaxwellOpcode opcode) {
         }
     }
     static const InstructionInfo kUnknown = {
-        MaxwellOpcode::NOP, "UNKNOWN", InstFormat::FMT_MISC, 0, 0, false, false, "Unknown opcode"
+        MaxwellOpcode::NOP, "UNKNOWN", InstFormat::FMT_MISC, 0, 0, false, false, false, "Unknown opcode"
     };
     return kUnknown;
 }
@@ -261,9 +261,24 @@ std::optional<DecodedInstruction> Decoder::decode_instruction(
         inst.raw[1] = *reinterpret_cast<const uint64_t*>(bytes + 8);
     }
 
-    // Extract opcode (bits [7:0])
-    uint8_t opcode_val = static_cast<uint8_t>(inst.raw[0] & 0xFF);
+    // Extract opcode - check for extended opcode (opcode 0xFF indicates extended)
+    // In Maxwell, extended opcodes use 0xFF as primary opcode
+    uint16_t opcode_val = 0;
+    bool is_extended = false;
+
+    uint8_t primary_opcode = static_cast<uint8_t>(inst.raw[0] & 0xFF);
+
+    if (primary_opcode == 0xFF) {
+        // Extended opcode: bits [15:8] contain the extended opcode
+        is_extended = true;
+        opcode_val = static_cast<uint16_t>((inst.raw[0] >> 8) & 0xFF);
+    } else {
+        // Standard 8-bit opcode
+        opcode_val = primary_opcode;
+    }
+
     inst.info = get_instruction_info(static_cast<MaxwellOpcode>(opcode_val));
+    inst.info.is_extended = is_extended;
 
     // Extract predicate (bits [10:8])
     inst.predicate = {RegisterFile::PRED, static_cast<uint16_t>((inst.raw[0] >> 8) & 0x7)};
@@ -444,6 +459,7 @@ bool Decoder::decode_fmt_r(const uint64_t* raw, DecodedInstruction& inst) {
 
 bool Decoder::decode_fmt_i(const uint64_t* raw, DecodedInstruction& inst) {
     // I-format: register-immediate
+    // Supports 13-bit, 32-bit, and 64-bit immediates
     uint64_t word = raw[0];
 
     // Destination
@@ -457,9 +473,36 @@ bool Decoder::decode_fmt_i(const uint64_t* raw, DecodedInstruction& inst) {
         inst.src_operands.push_back(Operand{OperandType::REGISTER, *src_reg, 0, 0, 0xE4, false, false});
     }
 
-    // Immediate (bits [51:39] - 13 bits, sign-extended)
-    int32_t imm = static_cast<int32_t>(extract_bits(word, 39, 13)) << 19 >> 19;
-    inst.src_operands.push_back(Operand{OperandType::IMMEDIATE, {RegisterFile::GPR, 0}, imm, 0, 0, false, false});
+    // Immediate encoding:
+    // 13-bit immediate: bits [51:39] (sign-extended)
+    // 32-bit immediate: bits [63:32] (when opcode indicates 32-bit immediate)
+    // 64-bit immediate: uses dual-issue second word (full 64-bit)
+
+    // Check if this is a 32-bit immediate instruction
+    // In Maxwell, 32-bit immediates use a different opcode format
+    // For now, decode as 13-bit sign-extended
+    int32_t imm13 = static_cast<int32_t>(extract_bits(word, 39, 13)) << 19 >> 19;
+
+    // Check for 32-bit immediate (bit 62 set in some encodings)
+    bool is_32bit_imm = (word >> 62) & 1;
+    if (is_32bit_imm && raw[1] != 0) {
+        // 32-bit immediate in bits [63:32]
+        uint32_t imm32 = static_cast<uint32_t>(word >> 32);
+        inst.src_operands.push_back(Operand{
+            OperandType::IMMEDIATE,
+            {RegisterFile::GPR, 0},
+            static_cast<int64_t>(static_cast<int32_t>(imm32)),
+            0, 0, false, false
+        });
+    } else {
+        // Standard 13-bit sign-extended immediate
+        inst.src_operands.push_back(Operand{
+            OperandType::IMMEDIATE,
+            {RegisterFile::GPR, 0},
+            static_cast<int64_t>(imm13),
+            0, 0, false, false
+        });
+    }
 
     return true;
 }
@@ -513,6 +556,22 @@ bool Decoder::decode_fmt_ldst(const uint64_t* raw, DecodedInstruction& inst) {
     // Offset (immediate)
     int32_t offset = static_cast<int32_t>(extract_bits(word, 39, 13)) << 19 >> 19;
     inst.src_operands.push_back(Operand{OperandType::IMMEDIATE, {RegisterFile::GPR, 0}, offset, 0, 0, false, false});
+
+    // Address register arithmetic: check for ADD/SUB on address registers
+    // These are encoded as R-format with ADDR register file
+    if (inst.info.opcode == MaxwellOpcode::IADD) {
+        // Check if destination or sources are ADDR registers
+        for (auto& op : inst.dst_operands) {
+            if (op.type == OperandType::REGISTER && op.reg.file == RegisterFile::ADDR) {
+                op.type = OperandType::ADDRESS;
+            }
+        }
+        for (auto& op : inst.src_operands) {
+            if (op.type == OperandType::REGISTER && op.reg.file == RegisterFile::ADDR) {
+                op.type = OperandType::ADDRESS;
+            }
+        }
+    }
 
     return true;
 }

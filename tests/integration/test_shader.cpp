@@ -170,7 +170,6 @@ TEST(MaxwellDecoder, ValidRFormatInstructions) {
         }
 
         auto result = decoder.decode_instruction(0, bytes.data(), bytes.size());
-        std::cout << "DEBUG: " << cases[i].name << " - decode " << (result ? "success" : "fail") << std::endl;
         if (result) {
             passed++;
             // Verify basic structure

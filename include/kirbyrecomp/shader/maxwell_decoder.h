@@ -35,6 +35,7 @@ struct InstructionInfo {
     uint8_t num_dst_operands;
     bool has_predicate;
     bool updates_cc;
+    bool is_extended = false;  // Extended opcode (bits [15:8])
     std::string description;
 };
 
