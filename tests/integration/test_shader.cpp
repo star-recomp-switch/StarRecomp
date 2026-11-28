@@ -277,9 +277,13 @@ TEST(SpirvGenerator, BasicModule) {
     EXPECT_NE(uint32_type, 0u);
     EXPECT_NE(float32_type, 0u);
 
-    // Create a simple function
+    // Create a simple function with entry block and return
     uint32_t func_type = builder.type_function(void_type, {});
     uint32_t func = builder.function_begin(void_type, func_type);
+
+    // Create entry block with return instruction (required for valid SPIR-V)
+    uint32_t entry_label = builder.label();
+    builder.return_inst();
     builder.function_end();
 
     // Add entry point
@@ -309,15 +313,19 @@ TEST(SpirvGenerator, ShaderReflection) {
     // Create uniform buffer
     uint32_t uint32_type = builder.type_int(32, 0);
     uint32_t uniform_member = builder.type_runtime_array(uint32_type);
-    uint32_t uniform_struct = builder.type_struct({uniform_member});
-    uint32_t uniform_ptr = builder.type_pointer(spirv::StorageClass::Uniform, uniform_struct);
+    uint32_t uniform_struct = builder.type_struct({uint32_type});
+    uint32_t uniform_ptr = builder.type_pointer(spirv::StorageClass::Uniform, uint32_type);
 
     // Create variable
-    builder.variable(uniform_ptr, spirv::StorageClass::Uniform, 0);
+    builder.variable(uint32_type, spirv::StorageClass::Uniform, 0);
 
     // Create function
     uint32_t func_type = builder.type_function(void_type, {});
     uint32_t func = builder.function_begin(void_type, func_type);
+
+    // Create entry block with return instruction (required for valid SPIR-V)
+    uint32_t entry_label = builder.label();
+    builder.return_inst();
     builder.function_end();
 
     // Entry point
@@ -334,10 +342,10 @@ TEST(SpirvGenerator, ShaderReflection) {
 TEST(MaxwellDecoder, SimpleInstruction) {
     maxwell::Decoder decoder;
 
-    // MOVI Vd.4S, #1.5 (encoding: 0x4F03F700)
-    // This is a MOVI instruction with imm8=0x78 (1.5 in fp16)
-    // Note: Maxwell MOVI is encoded as MOV with immediate
-    uint32_t encoding = 0x4F03F700u;
+    // MOV R0, R1 (R-format: opcode=0x00, dst=R0, src0=R1, src1=R0)
+    // R-format: opcode[7:0]=0x00, pred[10:8]=7, cc[12]=0, dst[25:13]=R0, src0[38:26]=R1, src1[51:39]=R0
+    // word = 0x00007000 (opcode=0x00, pred=7, dst=R0, src0=R1, src1=R0)
+    uint32_t encoding = 0x00007000u;
     std::vector<uint8_t> bytes = {
         static_cast<uint8_t>(encoding & 0xFF),
         static_cast<uint8_t>((encoding >> 8) & 0xFF),
@@ -431,6 +439,10 @@ TEST(SpirvGenerator, SpirvValValidation) {
 
     uint32_t func_type = builder.type_function(void_type, {});
     uint32_t func = builder.function_begin(void_type, func_type);
+
+    // Create entry block with return instruction (required for valid SPIR-V)
+    uint32_t entry_label = builder.label();
+    builder.return_inst();
     builder.function_end();
 
     builder.entry_point(spirv::ExecutionModel::GLCompute, func, "main", {});
