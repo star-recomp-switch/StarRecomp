@@ -45,6 +45,18 @@ const InstructionInfo& get_instruction_info(MaxwellOpcode opcode);
 // Register File
 // ============================================================================
 
+// Predicate register condition codes (Maxwell P0-P7)
+enum class PredicateCondition : uint8_t {
+    P0 = 0,  // Always false / zero
+    P1 = 1,  // Carry flag
+    P2 = 2,  // Zero flag
+    P3 = 3,  // Sign flag
+    P4 = 4,  // Overflow flag
+    P5 = 5,  // Thread predicate
+    P6 = 6,  // Custom predicate
+    P7 = 7   // Always true (no predicate / unconditional)
+};
+
 enum class RegisterFile : uint8_t {
     GPR     = 0,  // R0-R255
     PRED    = 1,  // P0-P7
@@ -107,6 +119,20 @@ struct DecodedInstruction {
     uint32_t control_flow_target = 0;  // For BRA/BRX/CALL
 
     std::string to_string() const;
+
+    // Check if instruction has a predicate (not P7)
+    bool has_predicate() const { return predicate.index != 7; }
+
+    // Get effective predicate condition (with negation applied)
+    PredicateCondition get_predicate_condition() const {
+        if (predicate.index == 7) return PredicateCondition::P7;
+        PredicateCondition cond = static_cast<PredicateCondition>(predicate.index);
+        if (predicate_neg) {
+            // Negate: P0<->P7, P1<->P6, P2<->P5, P3<->P4
+            return static_cast<PredicateCondition>(7 - static_cast<uint8_t>(cond));
+        }
+        return cond;
+    }
 };
 
 // ============================================================================
@@ -156,6 +182,9 @@ private:
     std::optional<Operand> decode_immediate_operand(uint64_t bits, int shift, int width);
     std::optional<Operand> decode_address_operand(uint64_t bits, int shift, int width);
     std::optional<Register> decode_register(uint64_t bits, int shift, int width);
+
+    // Predicate helpers
+    uint32_t predicate_to_spv_condition(uint8_t pred_reg, bool negated) const;
 
     // Helper to extract bit field
     static uint64_t extract_bits(uint64_t value, int shift, int width);

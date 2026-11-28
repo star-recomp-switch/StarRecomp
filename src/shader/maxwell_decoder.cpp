@@ -600,13 +600,17 @@ bool Decoder::decode_fmt_misc(const uint64_t* raw, DecodedInstruction& inst) {
 // Operand Decoder Helpers
 // ============================================================================
 
+// ============================================================================
+// Improved Register Decoding with Predicate Logic Support
+// ============================================================================
+
 std::optional<Register> Decoder::decode_register(uint64_t bits, int shift, int width) {
     uint64_t reg_bits = extract_bits(bits, shift, width);
 
-    // Register encoding:
-    // Bits [11:8] = register file
-    // Bits [7:0]  = register index (for GPR)
-    // Predicate: bits [2:0] only
+    // Register encoding (Maxwell):
+    // Bits [11:8] = register file (4 bits)
+    // Bits [7:0]  = register index (8 bits for GPR, 3 bits for predicate)
+    // For ADDR registers, bits [11:0] can be 12-bit index
 
     uint32_t file_bits = static_cast<uint32_t>(extract_bits(reg_bits, 8, 4));
     uint32_t index_bits = static_cast<uint32_t>(reg_bits & 0xFF);
@@ -625,12 +629,29 @@ std::optional<Register> Decoder::decode_register(uint64_t bits, int shift, int w
         default: file = RegisterFile::GPR; break;
     }
 
-    // For predicate registers, index is only 3 bits
+    // For predicate registers, index is only 3 bits (P0-P7)
     if (file == RegisterFile::PRED) {
         index_bits &= 0x7;
     }
+    // For address registers, use 12-bit index (bits [11:0])
+    else if (file == RegisterFile::ADDR) {
+        index_bits = static_cast<uint32_t>(reg_bits & 0xFFF);
+    }
 
     return Register{file, static_cast<uint16_t>(index_bits)};
+}
+
+// ============================================================================
+// Predicate Logic Helpers
+// ============================================================================
+
+// Convert predicate register to SPIR-V condition
+uint32_t Decoder::predicate_to_spv_condition(uint8_t pred_reg, bool negated) const {
+    // In SPIR-V, we use OpSelect with predicate
+    // pred_reg 0-7 maps to P0-P7
+    // negated: true means use ~predicate
+    (void)pred_reg; (void)negated;
+    return 0; // Placeholder - actual implementation would map to SPIR-V select
 }
 
 } // namespace kirbyrecomp::shader::maxwell
