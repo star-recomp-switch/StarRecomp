@@ -100,7 +100,7 @@
 
 ---
 
-## 🔄 IN PROGRESS: Milestone 6 - NVN → Vulkan Runtime
+## ✅ COMPLETED: Milestone 6 - NVN → Vulkan Runtime
 
 ### Command Buffer & Resource Management
 - [x] Maxwell FIFO command parser (command_buffer.h/cpp)
@@ -159,11 +159,11 @@
   - Quality mode selection and parameter configuration
 
 ### Advanced Features
-- [ ] Texture format conversion (ASTC, BC, etc.)
-- [ ] Buffer mapping strategies (persistent, coherent)
-- [ ] Descriptor set pooling and reuse
-- [ ] Pipeline layout compatibility checking
-- [ ] Shader specialization constants for variants
+- [x] Texture format conversion (ASTC, BC, etc.) - Implemented in Milestone 5
+- [x] Buffer mapping strategies (persistent, coherent) - Implemented in resource_manager
+- [x] Descriptor set pooling and reuse - Just completed
+- [x] Pipeline layout compatibility checking - Completed
+- [x] Shader specialization constants for variants - Completed
 
 ---
 
@@ -190,7 +190,7 @@
 - [x] Save data support (DISF/DPFS, AES-CMAC)
 - [x] Performance profiling & optimization
 - [x] 120 FPS mode implementation
-- [ ] Full playthrough validation
+- [ ] Full playthrough validation (requires user-provided game files: ExeFS, RomFS, prod.keys)
 
 ---
 
