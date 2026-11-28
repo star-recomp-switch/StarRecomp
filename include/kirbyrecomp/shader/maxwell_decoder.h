@@ -124,7 +124,12 @@ public:
         const uint8_t* bytes,
         size_t available_bytes);
 
-    // Decode a sequence of instructions
+    // Decode the second instruction of a dual-issue pair
+    std::optional<DecodedInstruction> decode_dual_issue_second(
+        uint64_t address,
+        uint64_t second_raw_word);
+
+    // Decode a sequence of instructions (handles dual-issue pairs)
     std::vector<DecodedInstruction> decode_instructions(
         const uint8_t* bytes,
         size_t size,

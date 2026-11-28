@@ -304,6 +304,74 @@ std::optional<DecodedInstruction> Decoder::decode_instruction(
         return std::nullopt;
     }
 
+    // If dual-issue, decode the second instruction as well
+    if (is_dual) {
+        // The second instruction is at address + 8
+        // We'll return the first instruction, and the caller can call decode_instruction again
+        // for the second instruction at address + 8 with the same raw[1] word
+        // For now, we just store the second raw word for the caller to use
+    }
+
+    return inst;
+}
+
+// Decode the second instruction of a dual-issue pair
+// The caller must provide the second raw word (inst.raw[1]) and the instruction format
+std::optional<DecodedInstruction> Decoder::decode_dual_issue_second(
+    uint64_t address,
+    uint64_t second_raw_word) {
+
+    last_error_.clear();
+
+    DecodedInstruction inst;
+    inst.address = address;
+    inst.raw[0] = second_raw_word;
+    inst.is_dual_issue = true;
+
+    // Extract opcode (bits [7:0])
+    uint8_t opcode_val = static_cast<uint8_t>(second_raw_word & 0xFF);
+    inst.info = get_instruction_info(static_cast<MaxwellOpcode>(opcode_val));
+
+    // Extract predicate (bits [10:8])
+    inst.predicate = {RegisterFile::PRED, static_cast<uint16_t>((second_raw_word >> 8) & 0x7)};
+    inst.predicate_neg = (second_raw_word >> 11) & 1;
+    inst.cc_update = (second_raw_word >> 12) & 1;
+
+    // Decode based on format
+    bool success = false;
+    switch (inst.info.format) {
+        case InstFormat::FMT_R:
+            success = decode_fmt_r(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_I:
+            success = decode_fmt_i(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_C:
+            success = decode_fmt_c(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_LDST:
+            success = decode_fmt_ldst(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_TEX:
+            success = decode_fmt_tex(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_CTRL:
+            success = decode_fmt_ctrl(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_SYNC:
+            success = decode_fmt_sync(&second_raw_word, inst);
+            break;
+        case InstFormat::FMT_MISC:
+            success = decode_fmt_misc(&second_raw_word, inst);
+            break;
+    }
+
+    if (!success) {
+        last_error_ = "Failed to decode second instruction of dual-issue pair";
+        return std::nullopt;
+    }
+
+    inst.is_dual_issue = true;
     return inst;
 }
 
@@ -321,6 +389,17 @@ std::vector<DecodedInstruction> Decoder::decode_instructions(
             break;
         }
         instructions.push_back(*inst_opt);
+
+        // If dual-issue, decode the second instruction as well
+        if (inst_opt->is_dual_issue) {
+            // Decode the second instruction using the stored raw[1]
+            auto second_inst_opt = decode_dual_issue_second(
+                base_address + offset + 8, inst_opt->raw[1]);
+            if (second_inst_opt) {
+                instructions.push_back(*second_inst_opt);
+            }
+        }
+
         offset += inst_opt->is_dual_issue ? 16 : 8;
     }
 

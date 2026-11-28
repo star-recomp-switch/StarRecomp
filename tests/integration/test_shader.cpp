@@ -183,6 +183,76 @@ TEST(MaxwellDecoder, ValidRFormatInstructions) {
     std::cout << "Tested " << tested << " valid R-format instructions, " << passed << " decoded successfully" << std::endl;
 }
 
+// Test dual-issue instruction decoding
+TEST(MaxwellDecoder, DualIssueInstructions) {
+    maxwell::Decoder decoder;
+
+    // Create a dual-issue pair: first instruction has bit 63 set
+    // First instruction: MOV R0, R1 (with bit 63 set)
+    // Second instruction: ADD R2, R3 (normal)
+
+    auto make_r_format = [](kirbyrecomp::shader::MaxwellOpcode opcode, uint8_t pred, uint8_t pred_neg, uint8_t cc_update,
+                            uint32_t dst_file, uint8_t dst_idx,
+                            uint32_t src0_file, uint8_t src0_idx,
+                            uint32_t src1_file, uint8_t src1_idx,
+                            uint32_t src2_file, uint8_t src2_idx) -> uint64_t {
+        uint8_t opcode_val = static_cast<uint8_t>(opcode);
+
+        auto encode_reg = [](uint32_t file, uint8_t idx) -> uint64_t {
+            return (static_cast<uint64_t>(file) << 8) | static_cast<uint64_t>(idx);
+        };
+
+        uint64_t word = 0;
+        word |= static_cast<uint64_t>(opcode_val);                    // bits [7:0]
+        word |= (static_cast<uint64_t>(pred & 0x7) << 8);         // bits [10:8]
+        word |= (static_cast<uint64_t>(pred_neg & 0x1) << 11);    // bit 11
+        word |= (static_cast<uint64_t>(cc_update & 0x1) << 12);   // bit 12
+        word |= (encode_reg(dst_file, dst_idx) << 13);            // bits [25:13]
+        word |= (encode_reg(src0_file, src0_idx) << 26);          // bits [38:26]
+        word |= (encode_reg(src1_file, src1_idx) << 39);          // bits [51:39]
+        word |= (encode_reg(src2_file, src2_idx) << 52);          // bits [63:52]
+        return word;
+    };
+
+    // First instruction: MOV R0, R1 with dual-issue bit set
+    uint64_t first = make_r_format(
+        kirbyrecomp::shader::MaxwellOpcode::MOV, 7, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0
+    );
+    first |= (1ULL << 63);  // Set dual-issue bit
+
+    // Second instruction: ADD R2, R3, R4
+    uint64_t second = make_r_format(
+        kirbyrecomp::shader::MaxwellOpcode::IADD, 7, 0, 0,
+        0, 2, 0, 3, 0, 4, 0, 0
+    );
+
+    // Test decoding the pair
+    std::vector<uint8_t> bytes(16);
+    for (int b = 0; b < 8; ++b) {
+        bytes[b] = static_cast<uint8_t>((first >> (b * 8)) & 0xFF);
+        bytes[b + 8] = static_cast<uint8_t>((second >> (b * 8)) & 0xFF);
+    }
+
+    // Test decode_instructions which should handle dual-issue pairs
+    auto instructions = decoder.decode_instructions(bytes.data(), bytes.size(), 0);
+
+    // Should get 2 instructions
+    EXPECT_EQ(instructions.size(), 2u);
+
+    if (instructions.size() >= 2) {
+        // First instruction should be marked as dual-issue
+        EXPECT_TRUE(instructions[0].is_dual_issue);
+        EXPECT_EQ(instructions[0].info.opcode, kirbyrecomp::shader::MaxwellOpcode::MOV);
+
+        // Second instruction should also be decoded
+        EXPECT_EQ(instructions[1].info.opcode, kirbyrecomp::shader::MaxwellOpcode::IADD);
+        EXPECT_TRUE(instructions[1].is_dual_issue);
+    }
+
+    std::cout << "Tested dual-issue pair: " << instructions.size() << " instructions decoded" << std::endl;
+}
+
 // Test SPIR-V generator basic functionality using SpvBuilder
 TEST(SpirvGenerator, BasicModule) {
     spirv::SpvBuilder builder;
